@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLM Logistic - 货物物流追踪系统</title>
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+        /* ======================================
+           1. 全局重置与基础样式
+           修改主色调、背景色、字体等可在此处调整
+           ====================================== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #FAF9F6;
+            color: #333333;
+            min-height: 100vh;
+        }
+
+        /* ======================================
+           2. 通用布局与容器
+           ====================================== */
+        .web-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 30px;
+        }
+
+        /* ======================================
+           3. 通用组件样式
+           ====================================== */
+        /* 通用卡片 */
+        .card {
+            background: #f6f6f6;
+            border-radius: 20px;
+            padding: 24px 28px;
+            box-shadow: 0 16px 32px rgba(80, 80, 110, 0.08), 0 6px 12px rgba(80, 80, 110, 0.04);
+            border: 2px solid #ffffff;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 24px 48px rgba(80, 80, 110, 0.12), 0 10px 20px rgba(80, 80, 110, 0.06);
+        }
+        /* 卡片顶部装饰条 */
+        .accent-bar {
+            height: 5px;
+            background: #fc5185;
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+        }
+        /* 主题按钮 (语言切换/登录等) */
+        .btn-primary {
+            width: 100%;
+            background: #fc5185; color: #fff; border: none; padding: 16px;
+            border-radius: 24px; font-size: 16px; font-weight: 600; cursor: pointer;
+            box-shadow: 0 10px 24px rgba(252, 81, 133, 0.3); transition: all 0.2s;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(252, 81, 133, 0.4); }
+        
+        .lang-switch {
+            font-size: 14px; color: #fff; background-color: #fc5185;
+            padding: 10px 24px; border-radius: 24px; font-weight: 500; cursor: pointer; border: none;
+            box-shadow: 0 6px 16px rgba(252, 81, 133, 0.3); transition: all 0.2s;
+        }
+        .lang-switch:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(252, 81, 133, 0.4); }
+
+        /* ======================================
+           4. 登录页样式
+           ====================================== */
+        .login-wrapper { display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+        .login-card { width: 100%; max-width: 420px; }
+        .login-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; }
+        .login-title-text { font-size: 22px; font-weight: 600; }
+        .login-welcome { font-size: 28px; font-weight: 700; margin-bottom: 24px; }
+        
+        .input-group {
+            background: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;
+            box-shadow: inset 0 2px 4px rgba(135, 133, 162, 0.05);
+        }
+        .input-group input { width: 100%; border: none; outline: none; font-size: 16px; background: transparent; }
+        
+        .tips-box { margin-top: 24px; }
+        .tip-item { font-size: 13px; color: #888; display: flex; align-items: center; margin-bottom: 10px; }
+        .tip-item:last-child { margin-bottom: 0; }
+        .tip-dot { width:6px; height:6px; background:#fc5185; border-radius:50%; margin-right:10px; }
+
+        /* ======================================
+           5. 主面板样式
+           ====================================== */
+        .main-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 40px; padding-bottom: 20px;
+            border-bottom: 1px solid rgba(135, 133, 162, 0.1);
+        }
+        .main-header h1 { font-size: 28px; font-weight: 600; color: #333; margin-bottom: 6px; }
+        .main-header p { font-size: 14px; color: #888; }
+
+        .dashboard-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 30px; gap: 20px; flex-wrap: wrap;
+        }
+        .customer-card {
+            background: #f6f6f6; padding: 20px 32px; border-radius: 16px;
+            box-shadow: 0 16px 32px rgba(80, 80, 110, 0.08); border: 2px solid #ffffff;
+            border-left: 6px solid #fc5185; display: flex; align-items: center; gap: 30px; flex: 1; min-width: 300px;
+        }
+        .h-label { font-size: 13px; color: #888; display: block; margin-bottom: 4px; }
+        .h-value { font-size: 18px; font-weight: 600; color: #333; }
+        .h-num { font-size: 28px; font-weight: 700; color: #fc5185; margin-right: 4px; }
+        .switch-code-btn {
+            margin-left: auto; font-size: 13px; color: #fff; background: #333;
+            padding: 8px 20px; border-radius: 16px; cursor: pointer; border: none; transition: background 0.2s;
+        }
+        .switch-code-btn:hover { background: #000; }
+
+        .filter-tabs {
+            display: flex; gap: 12px; background: #f6f6f6; padding: 8px;
+            border-radius: 16px; box-shadow: inset 0 2px 4px rgba(135, 133, 162, 0.05);
+        }
+        .tab-item { padding: 10px 28px; border-radius: 12px; font-size: 14px; font-weight: 500; color: #666; cursor: pointer; transition: all 0.2s; }
+        .tab-item:hover { color: #333; }
+        .tab-item.active { background: #fc5185; color: #fff; box-shadow: 0 6px 16px rgba(252, 81, 133, 0.3); }
+
+        /* ======================================
+           6. 运单卡片网格
+           ====================================== */
+        .orders-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            gap: 24px;
+        }
+
+        .card-top { display: flex; justify-content: space-between; margin-bottom: 24px; }
+        .label { font-size: 12px; color: #999; margin-bottom: 4px; }
+        .bill-no { font-size: 18px; font-weight: 500; color: #333; margin-bottom: 6px; }
+        .vessel-text { font-size: 12px; color: #999; }
+        
+        .status-tag { font-size: 12px; padding: 5px 14px; border-radius: 6px; font-weight: 500; height: fit-content; }
+        .status-sailing { background: rgba(252, 81, 133, 0.1); color: #fc5185; }
+        .status-port { background: rgba(135, 133, 162, 0.1); color: #8785a2; }
+        .status-arrived { background: #333; color: #fff; }
+
+        .route-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+        .port-info { display: flex; flex-direction: column; align-items: center; width: 80px; }
+        .port-name { font-size: 18px; font-weight: 600; color: #333; }
+        .port-label { font-size: 11px; color: #a0a0a0; margin-top: 4px; }
+        .route-line { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; margin: 0 10px; }
+        .dashed-line { width: 100%; border-top: 2px dashed #dcdcdc; }
+        .ship-icon-box { position: absolute; background: #f6f6f6; padding: 0 10px; line-height: 1; }
+        .ship-icon { color: #fc5185; font-size: 26px; display: inline-block; animation: sailing 2.5s ease-in-out infinite; }
+        @keyframes sailing {
+            0% { transform: translateY(0) rotate(-3deg); }
+            50% { transform: translateY(-3px) rotate(3deg); }
+            100% { transform: translateY(0) rotate(-3deg); }
+        }
+
+        .card-bottom { display: flex; background: #fff; padding: 12px; border-radius: 10px; box-shadow: inset 0 2px 4px rgba(135, 133, 162, 0.05); }
+        .bottom-item { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; text-align: center; }
+        .divider { width: 1px; align-self: stretch; background: #e0e0e0; margin: 4px 0; }
+        .b-label { font-size: 11px; color: #999; margin-bottom: 4px; }
+        .b-value { font-size: 13px; color: #333; font-weight: 600; line-height: 1.4; }
+
+        /* ======================================
+           7. 详情页模态框
+           ====================================== */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(50, 50, 50, 0.5); display: flex; justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(4px); }
+        .modal-content {
+            width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto;
+            background: #FAF9F6; border-radius: 24px; padding: 30px; box-shadow: 0 30px 60px rgba(0,0,0,0.2);
+        }
+        .modal-vessel-info { text-align: center; background: #fff; padding: 12px; border-radius: 10px; font-size: 13px; color: #999; box-shadow: inset 0 2px 4px rgba(135, 133, 162, 0.05); }
+        .trace-title { margin-bottom: 24px; font-size: 18px; font-weight: 600; }
+        .back-btn { width: 100%; background: #333; color: #fff; border: none; padding: 14px; border-radius: 16px; font-size: 15px; margin-top: 20px; cursor: pointer; transition: background 0.2s; }
+        .back-btn:hover { background: #000; }
+
+        .timeline { padding-left: 10px; }
+        .timeline-item { display: flex; }
+        .timeline-left { display: flex; flex-direction: column; align-items: center; margin-right: 20px; margin-top: 4px; }
+        .dot-timeline { width: 14px; height: 14px; border-radius: 50%; background: #e0e0e0; border: 4px solid #f6f6f6; box-shadow: 0 0 0 2px #e0e0e0; }
+        .dot-done { background: #333; box-shadow: 0 0 0 2px #333; }
+        .dot-current { background: #fc5185; box-shadow: 0 0 0 4px rgba(252, 81, 133, 0.3); animation: pulse 1.5s infinite alternate; }
+        @keyframes pulse { from { box-shadow: 0 0 0 4px rgba(252, 81, 133, 0.3); } to { box-shadow: 0 0 0 10px rgba(252, 81, 133, 0.05); } }
+        .line-timeline { width: 2px; flex: 1; background: #e0e0e0; margin: 6px 0; min-height: 40px; }
+        .line-done { background: #333; }
+        .hidden { display: none; }
+        .timeline-right { padding-bottom: 30px; }
+        .node-title { font-size: 16px; font-weight: 600; color: #999; }
+        .node-current-text { color: #fc5185; font-size: 18px; }
+        .node-time { font-size: 13px; color: #a0a0a0; margin-top: 6px; }
+        .node-loc { font-size: 13px; color: #8785a2; margin-top: 6px; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        
+        <!-- ================= 登录页 ================= -->
+        <div class="web-container" v-if="!isLoggedIn">
+            <div class="login-wrapper">
+                <div class="card login-card">
+                    <div class="accent-bar"></div>
+                    <div class="login-header">
+                        <h1 class="login-title-text">{{ i18n[lang].login_title }}</h1>
+                        <button class="lang-switch" @click="toggleLang">{{ i18n[lang].lang_switch }}</button>
+                    </div>
+                    <div class="login-welcome">{{ i18n[lang].welcome }}</div>
+                    <div class="input-group">
+                        <label class="label" style="margin-bottom: 6px; display:block;">{{ i18n[lang].input_label }}</label>
+                        <input type="text" v-model="code" :placeholder="i18n[lang].input_placeholder" @keyup.enter="login" />
+                    </div>
+                    <button class="btn-primary" @click="login">{{ i18n[lang].btn_query }} →</button>
+                    <div class="tips-box">
+                        <div class="tip-item">
+                            <span class="tip-dot"></span> {{ i18n[lang].tip1 }}
+                        </div>
+                        <div class="tip-item">
+                            <span class="tip-dot"></span> {{ i18n[lang].tip2 }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 主面板 ================= -->
+        <div class="web-container" v-else>
+            <header class="main-header">
+                <div class="header-left">
+                    <h1>{{ i18n[lang].sys_title }}</h1>
+                    <p>{{ i18n[lang].func_desc }}</p>
+                </div>
+                <button class="lang-switch" @click="toggleLang">{{ i18n[lang].lang_switch }}</button>
+            </header>
+
+            <div class="dashboard-bar">
+                <div class="customer-card">
+                    <div>
+                        <span class="h-label">{{ i18n[lang].customer }}</span>
+                        <span class="h-value">{{ customerName }}</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-left: 40px;">
+                        <span class="h-num">{{ orders.length }}</span>
+                        <span class="h-label" style="margin-bottom: 0;">{{ i18n[lang].orders }}</span>
+                    </div>
+                    <button class="switch-code-btn" @click="switchCode">{{ i18n[lang].switch_code }}</button>
+                </div>
+
+                <div class="filter-tabs">
+                    <div :class="['tab-item', activeTab === 'all' && 'active']" @click="activeTab = 'all'">{{ i18n[lang].tab_all }}</div>
+                    <div :class="['tab-item', activeTab === 'progress' && 'active']" @click="activeTab = 'progress'">{{ i18n[lang].tab_progress }}</div>
+                    <div :class="['tab-item', activeTab === 'done' && 'active']" @click="activeTab = 'done'">{{ i18n[lang].tab_done }}</div>
+                </div>
+            </div>
+
+            <div class="orders-grid">
+                <div class="card" v-for="order in filteredOrders" :key="order.id" @click="viewDetail(order)" style="cursor: pointer;">
+                    <div class="accent-bar"></div>
+                    <div class="card-top">
+                        <div>
+                            <div class="label">{{ i18n[lang].bill_no }}</div>
+                            <div class="bill-no">{{ order.billNo }}</div>
+                            <div class="vessel-text">{{ order.vessel }} / {{ order.voyage }}</div>
+                        </div>
+                        <div :class="['status-tag', 'status-' + order.statusKey]">{{ getStatusText(order.statusKey) }}</div>
+                    </div>
+                    <div class="route-box">
+                        <div class="port-info">
+                            <div class="port-name">{{ order.pol }}</div>
+                            <div class="port-label">{{ i18n[lang].pol }}</div>
+                        </div>
+                        <div class="route-line">
+                            <div class="dashed-line"></div>
+                            <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
+                        </div>
+                        <div class="port-info">
+                            <div class="port-name">{{ order.pod }}</div>
+                            <div class="port-label">{{ i18n[lang].pod }}</div>
+                        </div>
+                    </div>
+                    <div class="card-bottom">
+                        <div class="bottom-item">
+                            <div class="b-label">{{ i18n[lang].etd }}</div>
+                            <div class="b-value">{{ order.etd }}</div>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="bottom-item">
+                            <div class="b-label">{{ i18n[lang].eta }}</div>
+                            <div class="b-value">{{ order.eta }}</div>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="bottom-item">
+                            <div class="b-label">{{ i18n[lang].volume }}</div>
+                            <div class="b-value">{{ order.volume }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 详情页模态框 ================= -->
+        <div class="modal-overlay" v-if="selectedOrder" @click.self="selectedOrder = null">
+            <div class="modal-content" @click.stop>
+                <div class="card">
+                    <div class="accent-bar"></div>
+                    <div class="card-top">
+                        <div>
+                            <div class="label">{{ i18n[lang].bill_no }}</div>
+                            <div class="bill-no">{{ selectedOrder.billNo }}</div>
+                        </div>
+                        <div :class="['status-tag', 'status-' + selectedOrder.statusKey]">{{ getStatusText(selectedOrder.statusKey) }}</div>
+                    </div>
+                    <div class="route-box">
+                        <div class="port-info">
+                            <div class="port-name">{{ selectedOrder.pol }}</div>
+                            <div class="port-label">{{ i18n[lang].pol }}</div>
+                        </div>
+                        <div class="route-line">
+                            <div class="dashed-line"></div>
+                            <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
+                        </div>
+                        <div class="port-info">
+                            <div class="port-name">{{ selectedOrder.pod }}</div>
+                            <div class="port-label">{{ i18n[lang].pod }}</div>
+                        </div>
+                    </div>
+                    <div class="modal-vessel-info">
+                        {{ selectedOrder.vessel }} / {{ selectedOrder.voyage }}
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 20px;">
+                    <div class="accent-bar"></div>
+                    <h3 class="trace-title">{{ i18n[lang].trace_title }}</h3>
+                    <div class="timeline">
+                        <div class="timeline-item" v-for="(trace, index) in selectedOrder.traces" :key="index">
+                            <div class="timeline-left">
+                                <div :class="['dot-timeline', trace.done && 'dot-done', trace.current && 'dot-current']"></div>
+                                <div :class="['line-timeline', trace.done && 'line-done', index === selectedOrder.traces.length - 1 && 'hidden']"></div>
+                            </div>
+                            <div class="timeline-right">
+                                <div :class="['node-title', trace.current && 'node-current-text']">{{ getTraceNode(trace.key) }}</div>
+                                <div class="node-time">{{ trace.time }}</div>
+                                <div class="node-loc">{{ trace.location }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="back-btn" @click="selectedOrder = null">关闭</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            setup() {
+                // --- 1. 响应式状态管理 ---
+                const lang = ref('zh');               
+                const isLoggedIn = ref(false);        
+                const code = ref('');                 
+                const customerName = ref('David');    
+                const activeTab = ref('all');         
+                const selectedOrder = ref(null);      
+                
+                // 初始化一个空数组，等待后端接口塞入数据
+                const orders = ref([]);               
+
+                // --- 2. 国际化字典 ---
+                const i18n = {
+                    zh: {
+                        sys_title: "Shane的船务记", func_desc: "实时查询货物物流状态", lang_switch: "English",
+                        login_title: "实时查询货物物流状态", welcome: "欢迎登录",
+                        input_label: "专属代码", input_placeholder: "请输入您的专属客户代码",
+                        btn_query: "立即查询", tip1: "客户代码请联系 Shane 获取", tip2: "数据由 BLM Logistic 维护",
+                        customer: "当前客户", orders: "票货物", switch_code: "切换客户代码",
+                        tab_all: "全部运单", tab_progress: "进行中", tab_done: "已完成",
+                        bill_no: "提单号", pol: "起运港", pod: "目的港", etd: "开船", eta: "到港", volume: "货量",
+                        trace_title: "物流轨迹", 
+                        status_sailing: "航行中", status_port: "已进港", status_arrived: "已抵达",
+                        node_in_warehouse: "已进仓", node_in_port: "已进港", node_departed: "已启运",
+                        node_sailing: "航行中", node_arrived: "已抵达"
+                    },
+                    en: {
+                        sys_title: "Shane's Logistics", func_desc: "Real-time Cargo Status Tracking", lang_switch: "中文",
+                        login_title: "Real-time Cargo Status Tracking", welcome: "Welcome Back",
+                        input_label: "Exclusive Code", input_placeholder: "Enter your exclusive client code",
+                        btn_query: "Search Now", tip1: "Please contact Shane for your code", tip2: "Powered by BLM Logistic",
+                        customer: "Client", orders: "Shipments", switch_code: "Switch Code",
+                        tab_all: "All", tab_progress: "In Progress", tab_done: "Completed",
+                        bill_no: "B/L No.", pol: "POL", pod: "POD", etd: "ETD", eta: "ETA", volume: "Volume",
+                        trace_title: "Logistics Trace", 
+                        status_sailing: "Sailing", status_port: "At Port", status_arrived: "Arrived",
+                        node_in_warehouse: "In Warehouse", node_in_port: "At Port", node_departed: "Departed",
+                        node_sailing: "Sailing", node_arrived: "Arrived"
+                    }
+                };
+
+                // --- 3. 计算属性 ---
+                const filteredOrders = computed(() => {
+                    if (activeTab.value === 'progress') return orders.value.filter(o => o.statusKey !== 'arrived');
+                    if (activeTab.value === 'done') return orders.value.filter(o => o.statusKey === 'arrived');
+                    return orders.value;
+                });
+
+                // --- 4. 方法函数 ---
+                const toggleLang = () => { lang.value = lang.value === 'zh' ? 'en' : 'zh'; };
+                
+                // 【修改点】改为异步请求后端接口
+                const login = async () => {
+                    if (!code.value) return alert('请输入代码');
+                    
+                    try {
+                        // 请求同目录下的 api/getOrders 接口
+                        const res = await fetch(`/api/getOrders?code=${code.value}`);
+                        
+                        if (res.ok) {
+                            const data = await res.json();
+                            orders.value = data; // 把后端拿到的数据塞进 Vue 里
+                            isLoggedIn.value = true; // 登录成功，切换页面
+                        } else {
+                            alert('代码错误或查询失败 (状态码: ' + res.status + ')');
+                        }
+                    } catch (err) {
+                        alert('网络请求出错: ' + err.message);
+                    }
+                };
+                
+                const switchCode = () => { isLoggedIn.value = false; code.value = ''; orders.value = []; };
+                const viewDetail = (order) => { selectedOrder.value = order; };
+                
+                const getStatusText = (key) => i18n[lang.value][`status_${key}`];
+                const getTraceNode = (key) => i18n[lang.value][`node_${key}`];
+
+                // --- 5. 返回给模板使用的数据和方法 ---
+                return {
+                    lang, isLoggedIn, code, customerName, activeTab, selectedOrder,
+                    i18n, orders, filteredOrders,
+                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
