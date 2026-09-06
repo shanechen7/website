@@ -148,15 +148,16 @@
         .status-port { background: rgba(135, 133, 162, 0.1); color: #8785a2; }
         .status-arrived { background: #333; color: #fff; }
 
-        .route-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .port-info { display: flex; flex-direction: column; align-items: center; justify-content: space-between; width: 80px; min-height: 52px; }
-        .port-name { font-size: 18px; font-weight: 600; color: #333; }
-        .port-label { font-size: 11px; color: #a0a0a0; }
-        .route-line { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; margin: 0 10px; align-self: stretch; }
-        .dashed-line { width: 100%; border-top: 2px dashed #dcdcdc; }
-        .ship-icon-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #f6f6f6; padding: 0 10px; line-height: 1; }
+        .route-box { display: flex; align-items: stretch; justify-content: space-between; margin-bottom: 24px; }
+        .port-info { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 80px; min-height: 52px; }
+        .port-name { font-size: 18px; font-weight: 600; color: #333; display: flex; align-items: flex-end; text-align: center; flex: 1; }
+        .port-label { font-size: 11px; color: #a0a0a0; margin-top: 4px; line-height: 11px; }
+        .route-line { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; position: relative; margin: 0 10px; min-height: 52px; padding-bottom: 15px; box-sizing: border-box; }
+        .route-line-top { position: relative; width: 100%; display: flex; align-items: flex-end; justify-content: center; flex: 1; }
+        .dashed-line { position: absolute; bottom: 13px; left: 0; width: 100%; border-top: 2px dashed #dcdcdc; }
+        .ship-icon-box { position: relative; background: #f6f6f6; padding: 0 10px; line-height: 1; z-index: 1; }
         .ship-icon { color: #fc5185; font-size: 26px; display: inline-block; animation: sailing 2.5s ease-in-out infinite; }
-        .ship-days { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); font-size: 11px; color: #a0a0a0; white-space: nowrap; }
+        .ship-days { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); font-size: 11px; color: #a0a0a0; line-height: 11px; text-align: center; white-space: nowrap; }
         @keyframes sailing {
             0% { transform: translateY(0) rotate(-3deg); }
             50% { transform: translateY(-3px) rotate(3deg); }
@@ -281,8 +282,10 @@
                             <div class="port-label">{{ i18n[lang].pol }}</div>
                         </div>
                         <div class="route-line">
-                            <div class="dashed-line"></div>
-                            <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
+                            <div class="route-line-top">
+                                <div class="dashed-line"></div>
+                                <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
+                            </div>
                             <div class="ship-days" v-if="transitDays(order)">{{ transitDays(order) }}</div>
                         </div>
                         <div class="port-info">
@@ -331,8 +334,10 @@
                             <div class="port-label">{{ i18n[lang].pol }}</div>
                         </div>
                         <div class="route-line">
-                            <div class="dashed-line"></div>
-                            <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
+                            <div class="route-line-top">
+                                <div class="dashed-line"></div>
+                                <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
+                            </div>
                         </div>
                         <div class="port-info">
                             <div class="port-name">{{ na(selectedOrder.pod) }}</div>
@@ -514,7 +519,7 @@
                     const e = Date.parse(o.etaRaw || '');
                     if (isNaN(a) || isNaN(e) || e <= a) return '';
                     const d = Math.round((e - a) / 86400000);
-                    return d > 0 ? `≈${d} 天` : '';
+                    return d > 0 ? `${d}天` : '';
                 };
 
                 // 逐票拉取飞驼海运轨迹（并发 3，避免 Vercel 单函数 10s 超时）
