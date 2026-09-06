@@ -1,6 +1,7 @@
 // api/getOrders.js
 
-export default async function handler(req, res) {
+// 注意这里改成了 module.exports
+module.exports = async (req, res) => {
     const { code } = req.query;
 
     if (!code) {
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 【修改点】这里必须用 GET 方法去获取 Access Token
+        // 用 API Token 去换取 Access Token
         const tokenRes = await fetch(`${SEATABLE_URL}/api-gateway/api/v2/dtables/app-access-token/`, {
             method: 'GET',
             headers: {
@@ -82,4 +83,4 @@ export default async function handler(req, res) {
         console.error('Server Error:', error);
         return res.status(500).json({ error: "服务器内部错误，请联系管理员" });
     }
-}
+};
