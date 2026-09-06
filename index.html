@@ -87,11 +87,15 @@
             box-shadow: inset 0 2px 4px rgba(135, 133, 162, 0.05);
         }
         .input-group input { width: 100%; border: none; outline: none; font-size: 16px; background: transparent; }
-        
-        .tips-box { margin-top: 24px; }
-        .tip-item { font-size: 13px; color: #888; display: flex; align-items: center; margin-bottom: 10px; }
-        .tip-item:last-child { margin-bottom: 0; }
-        .tip-dot { width:6px; height:6px; background:#fc5185; border-radius:50%; margin-right:10px; }
+
+        /* 登录页整屏布局：卡片垂直居中，底部放一行版权/联系小字 */
+        .login-page { display: flex; flex-direction: column; min-height: 100vh; box-sizing: border-box; }
+        .login-page .login-wrapper { flex: 1; min-height: 0; }
+        .login-footer { margin-top: auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; font-size: 12px; color: #b5b5b5; line-height: 1.8; }
+        .login-footer .foot-tip { text-align: center; }
+        .login-footer .foot-brand { text-align: right; white-space: nowrap; }
+        .login-footer a.mail-link { color: #fc5185; font-weight: 600; text-decoration: none; border-bottom: 1px dashed rgba(252, 81, 133, 0.5); }
+        .login-footer a.mail-link:hover { text-decoration: none; border-bottom-style: solid; }
 
         /* ======================================
            5. 主面板样式
@@ -259,7 +263,7 @@
         </div>
 
         <!-- ================= 登录页 ================= -->
-        <div class="web-container" v-else-if="!isLoggedIn">
+        <div class="web-container login-page" v-else-if="!isLoggedIn">
             <div class="login-wrapper">
                 <div class="card login-card">
                     <div class="accent-bar"></div>
@@ -277,15 +281,12 @@
                         <input type="checkbox" v-model="remember" />
                         <span>{{ i18n[lang].remember_me }}</span>
                     </label>
-                    <div class="tips-box">
-                        <div class="tip-item">
-                            <span class="tip-dot"></span> {{ i18n[lang].tip1 }}
-                        </div>
-                        <div class="tip-item">
-                            <span class="tip-dot"></span> {{ i18n[lang].tip2 }}
-                        </div>
-                    </div>
                 </div>
+            </div>
+            <div class="login-footer">
+                <span></span>
+                <span class="foot-tip">{{ i18n[lang].tip1a }} <a class="mail-link" href="mailto:shane.chen@bolomia.com" title="shane.chen@bolomia.com">Shane</a> {{ i18n[lang].tip1b }}</span>
+                <span class="foot-brand">{{ i18n[lang].tip2 }}</span>
             </div>
         </div>
 
@@ -503,7 +504,7 @@
                         login_title: "实时查询货物物流状态", welcome: "欢迎登录",
                         input_label: "专属代码", input_placeholder: "请输入您的专属客户代码",
                         btn_query: "立即查询", remember_me: "记住这台设备，下次自动登录", loading: "加载中…",
-                        tip1: "客户代码请联系 Shane 获取", tip2: "数据由 BLM Logistic 维护",
+                        tip1a: "客户代码请联系", tip1b: "获取", tip2: "数据由 BLM Logistic 维护",
                         customer: "当前客户", orders: "票货物", logout: "退出登录", empty_orders: "该客户暂无运单数据",
                         tab_all: "全部运单", tab_progress: "进行中", tab_done: "已完成",
                         bill_no: "提单号", pol: "起运港", pod: "目的港", etd: "开船", eta: "到港", volume: "货量",
@@ -522,7 +523,7 @@
                         login_title: "Real-time Cargo Status Tracking", welcome: "Welcome Back",
                         input_label: "Exclusive Code", input_placeholder: "Enter your exclusive client code",
                         btn_query: "Search Now", remember_me: "Remember this device and auto-login next time", loading: "Loading…",
-                        tip1: "Please contact Shane for your code", tip2: "Powered by BLM Logistic",
+                        tip1a: "Please contact", tip1b: "for your code", tip2: "Powered by BLM Logistic",
                         customer: "Client", orders: "Shipments", logout: "Log Out", empty_orders: "No shipments found for this client yet.",
                         tab_all: "All", tab_progress: "In Progress", tab_done: "Completed",
                         bill_no: "B/L No.", pol: "POL", pod: "POD", etd: "ETD", eta: "ETA", volume: "Volume",
