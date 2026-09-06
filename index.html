@@ -414,8 +414,8 @@
                                 <div :class="['line-timeline', trace.done && 'line-done', index === selectedOrder.traces.length - 1 && 'hidden']"></div>
                             </div>
                             <div class="timeline-right">
-                                <div :class="['node-title', trace.current && 'node-current-text']">{{ trace.text || getTraceNode(trace.key) }}</div>
-                                <div class="node-time">{{ trace.time }}<span v-if="trace.estimated" class="est">预计</span></div>
+                                <div :class="['node-title', trace.current && 'node-current-text']">{{ traceText(trace) }}</div>
+                                <div class="node-time">{{ trace.time }}<span v-if="trace.estimated" class="est">{{ i18n[lang].estimated }}</span></div>
                                 <div class="node-loc">{{ trace.location }}</div>
                             </div>
                         </div>
@@ -433,11 +433,11 @@
                          style="display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(135,133,162,0.1); font-size: 13px;">
                         <span style="font-weight: 600;">{{ c.no }}</span>
                         <span style="color: #8785a2;">{{ c.type }}</span>
-                        <span :style="displayKey(selectedOrder) === 'arrived' ? 'color:#333;' : 'color:#fc5185;'">{{ c.status || i18n[lang].no_data }}</span>
+                        <span :style="displayKey(selectedOrder) === 'arrived' ? 'color:#333;' : 'color:#fc5185;'">{{ containerStatusText(c) }}</span>
                     </div>
                 </div>
 
-                <button class="back-btn" @click="selectedOrder = null">关闭</button>
+                <button class="back-btn" @click="selectedOrder = null">{{ i18n[lang].close }}</button>
             </div>
         </div>
 
@@ -477,9 +477,10 @@
                         last_mile: "交付 & 派送", last_mile_carrier: "派送方式", last_mile_no: "派送单号", dmod: "交付方式",
                         last_mile_delivering: "后端派送中", express_querying: "快递查询中", express_missing_no: "缺少派送单号", express_signed: "已签收", delivered: "已交付",
                         carrier: "船公司", containers: "箱信息",
-                        status_sailing: "航行中", status_port: "已进港", status_arrived: "已抵达",
+                        status_sailing: "航行中", status_port: "已进港", status_arrived: "已抵达", status_none: "暂无数据",
                         node_in_warehouse: "已进仓", node_in_port: "已进港", node_departed: "已启运",
-                        node_sailing: "航行中", node_arrived: "已抵达"
+                        node_sailing: "航行中", node_arrived: "已抵达",
+                        estimated: "预计", days: "天", close: "关闭"
                     },
                     en: {
                         sys_title: "Shane's Logistics", func_desc: "Real-time Cargo Status Tracking", lang_switch: "中文",
@@ -493,9 +494,10 @@
                         last_mile: "Delivery & Last Mile", last_mile_carrier: "Carrier", last_mile_no: "Tracking No.", dmod: "Delivery Mode",
                         last_mile_delivering: "Last-mile Delivering", express_querying: "Courier Tracking…", express_missing_no: "Missing tracking No.", express_signed: "Delivered", delivered: "Delivered",
                         carrier: "Carrier", containers: "Containers",
-                        status_sailing: "Sailing", status_port: "At Port", status_arrived: "Arrived",
+                        status_sailing: "Sailing", status_port: "At Port", status_arrived: "Arrived", status_none: "No Data",
                         node_in_warehouse: "In Warehouse", node_in_port: "At Port", node_departed: "Departed",
-                        node_sailing: "Sailing", node_arrived: "Arrived"
+                        node_sailing: "Sailing", node_arrived: "Arrived",
+                        estimated: "Est.", days: " days", close: "Close"
                     }
                 };
 
@@ -514,13 +516,18 @@
                     return m.endsWith('DOOR') || m === 'ATD' || /INTERNATIONAL\s*EXPRESS/.test(m);
                 };
                 const carrierKind = (o) => {
-                    const c = String(o.lastMileCarrier || '').trim();
-                    if (/私人卡车|私卡/.test(c)) return 'private';
-                    if (/ups|fedex|联邦快递|dhl/i.test(c)) return 'express';
+                    const c = String(o.lastMileCarrier || '').trim().toUpperCase();
+                    // 表格派送方式改英文后同样识别：By truck / Truck / 私人卡车 / 私卡
+                    if (/BY TRUCK|\bTRUCK\b|私人卡车|私卡/.test(c)) return 'private';
+                    if (/UPS|FEDEX|DHL|TNT|联邦快递/.test(c)) return 'express';
                     return '';
                 };
                 // 人工完成信号：货代在表格 State 列维护"已交付/已签收"（私卡派送完成常用）
                 const isManualDone = (o) => /已交付|已签收|签收|妥投|delivered|signed/i.test(String(o.statusRaw || ''));
+                const seaStatusText = (o, key) => {
+                    if (lang.value === 'en') return o.statusTextEn || i18n.en[`status_${key}`] || key;
+                    return o.statusText || i18n.zh[`status_${key}`] || key;
+                };
                 const getDisplay = (o) => {
                     // 人工标记整单完成（私卡送达 / 快递签收后货代填 State）
                     if (isManualDone(o)) {
@@ -528,11 +535,11 @@
                     }
                     const seaKey = (o.statusKey && o.statusKey !== 'none') ? o.statusKey : 'sailing';
                     // 海运段还没走完：只显示海运状态
-                    if (seaKey !== 'arrived') return { key: seaKey, text: o.statusText || '' };
+                    if (seaKey !== 'arrived') return { key: seaKey, text: seaStatusText(o, seaKey) };
                     // 海运段已完成（提柜/收货）
                     if (!isDoorDelivery(o)) {
                         // 到港：到这里就结束
-                        return { key: 'arrived', text: o.statusText || '' };
+                        return { key: 'arrived', text: seaStatusText(o, 'arrived') };
                     }
                     const kind = carrierKind(o);
                     if (kind === 'private') {
@@ -555,7 +562,7 @@
                         return { key: 'delivering', text: i18n[lang.value].express_querying };
                     }
                     // 到门但后端派送方式为空/未识别：先按海运完成收尾
-                    return { key: 'arrived', text: o.statusText || '' };
+                    return { key: 'arrived', text: seaStatusText(o, 'arrived') };
                 };
                 const displayKey = (o) => getDisplay(o).key;
                 const displayText = (o) => {
@@ -629,7 +636,7 @@
                     const e = Date.parse(o.etaRaw || '');
                     if (isNaN(a) || isNaN(e) || e <= a) return '';
                     const d = Math.round((e - a) / 86400000);
-                    return d > 0 ? `${d}天` : '';
+                    return d > 0 ? `${d}${i18n[lang.value].days}` : '';
                 };
 
                 // 逐票拉取飞驼海运轨迹（并发 3，避免 Vercel 单函数 10s 超时）
@@ -669,6 +676,7 @@
                                     if (!o.volume && t.totalContainers) o.volume = t.totalContainers;
                                     o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : o.statusKey;
                                     o.statusText = t.statusText || '';
+                                    o.statusTextEn = t.statusTextEn || '';
                                     o.carrierName = t.carrier || '';
                                     o.totalContainers = t.totalContainers || '';
                                     o.containers = t.containers || [];
@@ -679,6 +687,7 @@
                                         o.traces = t.traces.map((x, i) => ({
                                             key: x.code,
                                             text: x.text,
+                                            textEn: x.textEn,
                                             time: fmtDateTime(x.time),
                                             location: x.place,
                                             estimated: x.estimated,
@@ -723,12 +732,24 @@
                     const s = [o.vessel, o.voyage].filter(Boolean).join(' / ');
                     return s || i18n[lang.value].no_data;
                 };
+                const traceText = (trace) => {
+                    if (!trace) return i18n[lang.value].no_data;
+                    if (lang.value === 'en') {
+                        return trace.textEn || trace.text || getTraceNode(trace.key) || i18n[lang.value].no_data;
+                    }
+                    return trace.text || getTraceNode(trace.key) || i18n[lang.value].no_data;
+                };
+                const containerStatusText = (c) => {
+                    if (!c) return i18n[lang.value].no_data;
+                    if (lang.value === 'en') return c.statusEn || c.status || i18n[lang.value].no_data;
+                    return c.status || i18n[lang.value].no_data;
+                };
 
                 // --- 5. 返回给模板使用的数据和方法 ---
                 return {
                     lang, isLoggedIn, code, customerName, activeTab, selectedOrder,
                     i18n, orders, filteredOrders,
-                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode, na, vesselText, transitDays, displayKey, displayText, isDoorDelivery
+                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode, na, vesselText, transitDays, displayKey, displayText, isDoorDelivery, traceText, containerStatusText
                 };
             }
         }).mount('#app');
