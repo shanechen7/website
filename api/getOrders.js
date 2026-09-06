@@ -25,10 +25,21 @@ module.exports = async (req, res) => {
     // ============================================================
     let colNameToKey = {};   // 列显示名 -> 列 key
     let colKeyToName = {};   // 列 key -> 列显示名（仅 debug 用）
+    let colKeyToOpt = {};    // 列 key -> { optionId: option文本 }（单选/多选列）
 
     const norm = (s) => String(s == null ? '' : s)
         .replace(/[\s()（）[\]【】/／\\,，。:：;；-]/g, '')
         .toLowerCase();
+
+    // SeaTable 单选列在行数据里存的是"选项 id"而不是选项文字
+    //（例如 State 选了"已交付"，接口可能返回一串编号）。
+    // 这里用 metadata 的 options 把 id 还原成文字，避免匹配不到。
+    const resolveCell = (key, v) => {
+        if (v === undefined || v === null || v === '') return v;
+        const opt = colKeyToOpt[key];
+        if (opt && typeof v === 'string' && opt[v]) return opt[v];
+        return v;
+    };
 
     const getCol = (row, ...names) => {
         if (!row) return null;
@@ -38,28 +49,28 @@ module.exports = async (req, res) => {
         for (const n of names) {
             if (colNameToKey[n]) {
                 const v = row[colNameToKey[n]];
-                if (v !== undefined && v !== null && v !== '') return v;
+                if (v !== undefined && v !== null && v !== '') return resolveCell(colNameToKey[n], v);
             }
         }
         for (const n of names) {
             const matchedName = colKeys.find((k) => norm(k) === norm(n));
             if (matchedName && colNameToKey[matchedName]) {
                 const v = row[colNameToKey[matchedName]];
-                if (v !== undefined && v !== null && v !== '') return v;
+                if (v !== undefined && v !== null && v !== '') return resolveCell(colNameToKey[matchedName], v);
             }
         }
 
         // 2) 兜底：直接按行里的 key 匹配（兼容 key 就是显示名的情况）
         for (const n of names) {
             const v = row[n];
-            if (v !== undefined && v !== null && v !== '') return v;
+            if (v !== undefined && v !== null && v !== '') return resolveCell(n, v);
         }
         const rowKeys = Object.keys(row);
         for (const n of names) {
             const key = rowKeys.find((k) => norm(k) === norm(n));
             if (key) {
                 const v = row[key];
-                if (v !== undefined && v !== null && v !== '') return v;
+                if (v !== undefined && v !== null && v !== '') return resolveCell(key, v);
             }
         }
         return null;
@@ -167,6 +178,15 @@ module.exports = async (req, res) => {
             if (col.name && col.key) {
                 colNameToKey[col.name] = col.key;
                 colKeyToName[col.key] = col.name;
+            }
+            // 单选/多选列：行数据里存 option id，需还原成选项文字
+            const opts = (col.data && col.data.options) || col.options;
+            if (col.key && Array.isArray(opts)) {
+                const map = {};
+                for (const o of opts) {
+                    if (o && o.id != null && o.name != null) map[String(o.id)] = String(o.name);
+                }
+                if (Object.keys(map).length) colKeyToOpt[col.key] = map;
             }
         }
 
