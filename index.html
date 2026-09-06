@@ -283,6 +283,7 @@
                         <div class="route-line">
                             <div class="dashed-line"></div>
                             <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
+                            <div class="ship-days" v-if="transitDays(order)">{{ transitDays(order) }}</div>
                         </div>
                         <div class="port-info">
                             <div class="port-name">{{ na(order.pod) }}</div>
@@ -292,12 +293,12 @@
                     <div class="card-bottom">
                         <div class="bottom-item">
                             <div class="b-label">{{ i18n[lang].etd }}</div>
-                            <div class="b-value">{{ na(order.etd) }}<span v-if="order.etdEstimated" class="est">预计</span></div>
+                            <div class="b-value">{{ na(order.etd) }}</div>
                         </div>
                         <div class="divider"></div>
                         <div class="bottom-item">
                             <div class="b-label">{{ i18n[lang].eta }}</div>
-                            <div class="b-value">{{ na(order.eta) }}<span v-if="order.etaEstimated" class="est">预计</span></div>
+                            <div class="b-value">{{ na(order.eta) }}</div>
                         </div>
                         <div class="divider"></div>
                         <div class="bottom-item">
@@ -404,8 +405,12 @@
                 const lang = ref('zh');               
                 const isLoggedIn = ref(false);        
                 const code = ref('');                 
-                const customerName = ref('David');    
-                const activeTab = ref('all');         
+                const customerName = computed(() => {
+                    // 客户名优先取订单里 Name 列去重后的唯一值，否则回落到登录用的 code
+                    const names = [...new Set((orders.value || []).map((o) => o.name).filter(Boolean))];
+                    return names.length === 1 ? names[0] : (code.value || '');
+                });
+                const activeTab = ref('progress');   // 默认选中"进行中"         
                 const selectedOrder = ref(null);      
                 
                 // 初始化一个空数组，等待后端接口塞入数据
@@ -541,9 +546,12 @@
                                     o.pod = shortPort(t.pod) || o.pod;
                                     // 有实际时间（ATD/ATA）优先显示，没有才用预计（ETD/ETA）并标记"预计"
                                     o.etd = fmtDate(t.atd || t.etd) || o.etd;
-                                    o.etdEstimated = !t.atd;
                                     o.eta = fmtDate(t.ata || t.eta) || o.eta;
-                                    o.etaEstimated = !t.ata;
+                                    // 预计航程天数需要原始时间（不被格式化）
+                                    o.atdRaw = t.atd || '';
+                                    o.etaRaw = t.ata || t.eta || '';
+                                    // 货量兜底：表格里没填就用飞驼的箱量（如 "1*40HC"）
+                                    if (!o.volume && t.totalContainers) o.volume = t.totalContainers;
                                     o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : o.statusKey;
                                     o.statusText = t.statusText || '';
                                     o.carrierName = t.carrier || '';
@@ -604,7 +612,7 @@
                 return {
                     lang, isLoggedIn, code, customerName, activeTab, selectedOrder,
                     i18n, orders, filteredOrders,
-                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode, na, vesselText
+                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode, na, vesselText, transitDays
                 };
             }
         }).mount('#app');
