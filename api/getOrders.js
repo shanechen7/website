@@ -70,7 +70,8 @@ module.exports = async (req, res) => {
         if (!v) return 'sailing';
         const s = String(v).trim();
         if (s === 'sailing' || s === 'port' || s === 'arrived') return s;
-        if (/到达|抵达|已到|arriv|complet/i.test(s)) return 'arrived';
+        // "已交付/已签收/妥投" = 私卡（或快递）派送完成，货代在 State 人工维护 -> 整单完成
+        if (/到达|抵达|已到|已交付|已签收|签收|妥投|arriv|deliver|complet|sign/i.test(s)) return 'arrived';
         if (/进港|靠港|到港|port/i.test(s)) return 'port';
         // 其余一律视为"航行中/在途"
         return 'sailing';
@@ -229,7 +230,10 @@ module.exports = async (req, res) => {
                 volume: getCol(row, 'C/V（货量）', 'C/V(货量)', '货量', 'Volume', 'C/V') ?? '',
                 statusKey,
                 statusRaw: rawStatus || '',
-                transportType: getCol(row, 'S/M（运输方式）', 'S/M(运输方式)', '运输方式', 'S/M') || '',
+                // 交付方式（唯一列：D/M），用于判断"到门"还是"到港"：
+                //   到门 = 以 DOOR 结尾（CY TO DOOR / CFS TO DOOR / DOOR TO DOOR）、ATD、International Express
+                //   其余（CY TO CY / CFS TO CFS / DOOR TO CY / DOOR TO CFS / ATA 等）一律到港
+                deliveryMode: getCol(row, 'D/M（交付方式）', 'D/M(交付方式)', 'D/M', '交付方式', 'Delivery Mode', 'DeliveryMode') || '',
                 lastMileCarrier: getCol(row, '后端派送方式', '派送方式', 'Last-mile carrier') || '',
                 lastMileTrackingNo: getCol(row, '后端单号', '派送单号', 'Last-mile tracking no') || '',
                 vessel,
