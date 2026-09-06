@@ -88,6 +88,28 @@ module.exports = async (req, res) => {
         return 'sailing';
     };
 
+    // ============================================================
+    // 带重试 + 报错定位的 fetch 封装：
+    // 网络抖动/冷启动 DNS 慢时自动重试；多次失败则抛出带"网址+底层原因"的错误，
+    // 方便在 Vercel 日志 / 前端弹窗里一眼看出是哪个 SeaTable 接口连不上。
+    // ============================================================
+    const seaFetch = async (label, url, init = {}) => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                return await fetch(url, init);
+            } catch (e) {
+                if (attempt === 3) {
+                    const cause = (e && e.cause && (e.cause.message || e.cause.code)) || '';
+                    const msg = `请求失败(${label}): ${url}${cause ? ` —— ${cause}` : ''}`;
+                    console.error('[SeaTable] ' + msg, e);
+                    throw new Error(msg, { cause: e });
+                }
+                console.warn(`[SeaTable] ${label} 第 ${attempt} 次失败，稍后重试:`, url);
+                await new Promise((r) => setTimeout(r, 600 * attempt));
+            }
+        }
+    };
+
     // 根据已有数据拼出 5 个物流节点的时间线
     const buildTraces = (info) => {
         const stepMap = { in_warehouse: 0, departed: 1, sailing: 2, in_port: 3, arrived: 4 };
@@ -112,7 +134,7 @@ module.exports = async (req, res) => {
         // ============================================================
         // 1. 获取 Base 的访问凭证（官方 v2.1 接口，Bearer 鉴权）
         // ============================================================
-        const tokenRes = await fetch(`${SEATABLE_URL}/api/v2.1/dtable/app-access-token/`, {
+        const tokenRes = await seaFetch('获取Base访问凭证 app-access-token', `${SEATABLE_URL}/api/v2.1/dtable/app-access-token/`, {
             method: 'GET',
             headers: {
                 Accept: 'application/json; charset=utf-8; indent=4',
@@ -136,7 +158,7 @@ module.exports = async (req, res) => {
         // 2. 通用请求工具（Bearer 为主，兼容 Token）
         // ============================================================
         const fetchRows = async (url) => {
-            const makeReq = (authHeader) => fetch(url, {
+            const makeReq = (authHeader) => seaFetch('读取SeaTable数据', url, {
                 headers: {
                     Authorization: authHeader,
                     Accept: 'application/json; charset=utf-8; indent=4',
