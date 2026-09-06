@@ -155,6 +155,7 @@
         .status-sailing { background: rgba(252, 81, 133, 0.1); color: #fc5185; }
         .status-port { background: rgba(135, 133, 162, 0.1); color: #8785a2; }
         .status-arrived { background: #333; color: #fff; }
+        .status-delivering { background: rgba(74, 108, 247, 0.12); color: #4a6cf7; }
 
         .route-box { display: flex; align-items: stretch; justify-content: space-between; margin-bottom: 24px; }
         .port-info { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 100px; min-height: 52px; flex-shrink: 0; }
@@ -278,7 +279,7 @@
                             <div class="vessel-text">{{ vesselText(order) }}</div>
                         </div>
                         <div style="text-align: right;">
-                            <div :class="['status-tag', 'status-' + order.statusKey]">{{ order.statusText || getStatusText(order.statusKey) }}</div>
+                            <div :class="['status-tag', 'status-' + displayKey(order)]">{{ displayText(order) }}</div>
                             <div v-if="order.trackingState === 'loading'" class="track-hint">{{ i18n[lang].track_loading }}</div>
                             <div v-else-if="order.trackingState === 'pending'" class="track-hint">{{ order.trackingError || i18n[lang].track_pending }}</div>
                             <div v-else-if="order.trackingState === 'none'" class="track-hint">{{ order.trackingError || i18n[lang].track_none }}</div>
@@ -334,7 +335,7 @@
                             <div class="label">{{ i18n[lang].bill_no }}</div>
                             <div class="bill-no">{{ na(selectedOrder.billNo) }}</div>
                         </div>
-                        <div :class="['status-tag', 'status-' + selectedOrder.statusKey]">{{ selectedOrder.statusText || getStatusText(selectedOrder.statusKey) }}</div>
+                        <div :class="['status-tag', 'status-' + displayKey(selectedOrder)]">{{ displayText(selectedOrder) }}</div>
                     </div>
                     <div class="route-box">
                         <div class="port-info">
@@ -386,19 +387,25 @@
                          style="display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(135,133,162,0.1); font-size: 13px;">
                         <span style="font-weight: 600;">{{ c.no }}</span>
                         <span style="color: #8785a2;">{{ c.type }}</span>
-                        <span :style="selectedOrder.statusKey === 'arrived' ? 'color:#333;' : 'color:#fc5185;'">{{ c.status || i18n[lang].no_data }}</span>
+                        <span :style="displayKey(selectedOrder) === 'arrived' ? 'color:#333;' : 'color:#fc5185;'">{{ c.status || i18n[lang].no_data }}</span>
                     </div>
                 </div>
 
-                <!-- 后端派送：飞驼标准版未开通国际快递，先展示表格里人工维护的信息 -->
-                <div class="card" style="margin-top: 20px;" v-if="selectedOrder.lastMileCarrier || selectedOrder.lastMileTrackingNo">
+                <!-- 交付方式 + 后端派送：快递轨迹暂未接入 API，先展示表格里人工维护的信息 -->
+                <div class="card" style="margin-top: 20px;" v-if="selectedOrder.deliveryMode || selectedOrder.lastMileCarrier || selectedOrder.lastMileTrackingNo">
                     <div class="accent-bar"></div>
                     <h3 class="trace-title">{{ i18n[lang].last_mile }}</h3>
                     <div style="font-size: 14px; line-height: 2;">
-                        <div><span style="color: #999;">{{ i18n[lang].last_mile_carrier }}：</span>{{ na(selectedOrder.lastMileCarrier) }}</div>
-                        <div><span style="color: #999;">{{ i18n[lang].last_mile_no }}：</span>{{ na(selectedOrder.lastMileTrackingNo) }}</div>
+                        <div v-if="selectedOrder.deliveryMode"><span style="color: #999;">{{ i18n[lang].dmod }}：</span>{{ selectedOrder.deliveryMode }}</div>
+                        <div><span style="color: #999;">{{ i18n[lang].last_mile_carrier }}：</span>{{ selectedOrder.lastMileCarrier || '—' }}</div>
+                        <div v-if="displayKey(selectedOrder) === 'arrived' || /ups|fedex|dhl/i.test(selectedOrder.lastMileCarrier || '')">
+                            <span style="color: #999;">{{ i18n[lang].last_mile_no }}：</span>{{ selectedOrder.lastMileTrackingNo || '—' }}
+                        </div>
                         <div v-if="selectedOrder.lastMileInfo" style="margin-top: 6px; color: #fc5185; font-size: 13px;">
                             {{ selectedOrder.lastMileInfo.statusInfo }}
+                        </div>
+                        <div v-else-if="selectedOrder.lastMileNote" style="margin-top: 6px; color: #999; font-size: 13px;">
+                            {{ selectedOrder.lastMileNote }}
                         </div>
                     </div>
                 </div>
@@ -440,7 +447,8 @@
                         tab_all: "全部运单", tab_progress: "进行中", tab_done: "已完成",
                         bill_no: "提单号", pol: "起运港", pod: "目的港", etd: "开船", eta: "到港", volume: "货量",
                         trace_title: "物流轨迹", no_data: "暂无数据", track_loading: "轨迹加载中…", track_none: "暂无轨迹数据", track_pending: "已订阅，轨迹获取中…",
-                        last_mile: "后端派送", last_mile_carrier: "派送方式", last_mile_no: "派送单号",
+                        last_mile: "交付 & 派送", last_mile_carrier: "派送方式", last_mile_no: "派送单号", dmod: "交付方式",
+                        last_mile_delivering: "后端派送中", express_querying: "快递查询中", express_missing_no: "缺少派送单号", express_signed: "已签收", delivered: "已交付",
                         carrier: "船公司", containers: "箱信息",
                         status_sailing: "航行中", status_port: "已进港", status_arrived: "已抵达",
                         node_in_warehouse: "已进仓", node_in_port: "已进港", node_departed: "已启运",
@@ -455,7 +463,8 @@
                         tab_all: "All", tab_progress: "In Progress", tab_done: "Completed",
                         bill_no: "B/L No.", pol: "POL", pod: "POD", etd: "ETD", eta: "ETA", volume: "Volume",
                         trace_title: "Logistics Trace", no_data: "N/A", track_loading: "Loading tracking…", track_none: "No tracking data", track_pending: "Subscribed, fetching…",
-                        last_mile: "Last Mile", last_mile_carrier: "Carrier", last_mile_no: "Tracking No.",
+                        last_mile: "Delivery & Last Mile", last_mile_carrier: "Carrier", last_mile_no: "Tracking No.", dmod: "Delivery Mode",
+                        last_mile_delivering: "Last-mile Delivering", express_querying: "Courier Tracking…", express_missing_no: "Missing tracking No.", express_signed: "Delivered", delivered: "Delivered",
                         carrier: "Carrier", containers: "Containers",
                         status_sailing: "Sailing", status_port: "At Port", status_arrived: "Arrived",
                         node_in_warehouse: "In Warehouse", node_in_port: "At Port", node_departed: "Departed",
@@ -463,10 +472,76 @@
                     }
                 };
 
+                // ============================================================
+                // 交付方式 / 后端派送 状态计算
+                // 到门判定（读 D/M 交付方式）：
+                //   以 DOOR 结尾（CY TO DOOR / CFS TO DOOR / DOOR TO DOOR）
+                //   = ATD（空运到门） / = International Express
+                //   其余（CY TO CY / CFS TO CFS / DOOR TO CY / DOOR TO CFS / ATA）一律到港
+                // 只有"到门 + 海运段已完成(提柜)"的票，才会切到后端派送状态：
+                //   后端派送方式 = 私人卡车 -> 后端派送中（无 API）
+                //   后端派送方式 = UPS/FedEx/DHL -> 用后端单号查快递 API（预留，暂未接入）
+                // ============================================================
+                const isDoorDelivery = (o) => {
+                    const m = String(o.deliveryMode || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                    return m.endsWith('DOOR') || m === 'ATD' || /INTERNATIONAL\s*EXPRESS/.test(m);
+                };
+                const carrierKind = (o) => {
+                    const c = String(o.lastMileCarrier || '').trim();
+                    if (/私人卡车|私卡/.test(c)) return 'private';
+                    if (/ups|fedex|联邦快递|dhl/i.test(c)) return 'express';
+                    return '';
+                };
+                // 人工完成信号：货代在表格 State 列维护"已交付/已签收"（私卡派送完成常用）
+                const isManualDone = (o) => /已交付|已签收|签收|妥投|delivered|signed/i.test(String(o.statusRaw || ''));
+                const getDisplay = (o) => {
+                    // 人工标记整单完成（私卡送达 / 快递签收后货代填 State）
+                    if (isManualDone(o)) {
+                        return { key: 'arrived', text: i18n[lang.value].delivered };
+                    }
+                    const seaKey = (o.statusKey && o.statusKey !== 'none') ? o.statusKey : 'sailing';
+                    // 海运段还没走完：只显示海运状态
+                    if (seaKey !== 'arrived') return { key: seaKey, text: o.statusText || '' };
+                    // 海运段已完成（提柜/收货）
+                    if (!isDoorDelivery(o)) {
+                        // 到港：到这里就结束
+                        return { key: 'arrived', text: o.statusText || '' };
+                    }
+                    const kind = carrierKind(o);
+                    if (kind === 'private') {
+                        return { key: 'delivering', text: i18n[lang.value].last_mile_delivering };
+                    }
+                    if (kind === 'express') {
+                        if (o.lastMileInfo) {
+                            const s = `${o.lastMileInfo.deliveryStatus || ''} ${o.lastMileInfo.statusInfo || ''} ${o.lastMileInfo.signedBy || ''}`;
+                            if (/delivered|签收|妥投|signed/i.test(s)) {
+                                return { key: 'arrived', text: i18n[lang.value].express_signed };
+                            }
+                            return { key: 'delivering', text: o.lastMileInfo.statusInfo || i18n[lang.value].express_querying };
+                        }
+                        if (!o.lastMileTrackingNo) {
+                            return { key: 'delivering', text: i18n[lang.value].express_missing_no };
+                        }
+                        // TODO 国际快递 API 尚未接入：
+                        // 接入后在这里调 /api/track?expressNo=xxx&courierCode=xxx，
+                        // 把返回的 lastMileInfo 写入 o.lastMileInfo，上方分支会自动展示签收/最新轨迹。
+                        return { key: 'delivering', text: i18n[lang.value].express_querying };
+                    }
+                    // 到门但后端派送方式为空/未识别：先按海运完成收尾
+                    return { key: 'arrived', text: o.statusText || '' };
+                };
+                const displayKey = (o) => getDisplay(o).key;
+                const displayText = (o) => {
+                    const d = getDisplay(o);
+                    return d.text || getStatusText(d.key);
+                };
+
                 // --- 3. 计算属性 ---
                 const filteredOrders = computed(() => {
-                    if (activeTab.value === 'progress') return orders.value.filter(o => o.statusKey !== 'arrived');
-                    if (activeTab.value === 'done') return orders.value.filter(o => o.statusKey === 'arrived');
+                    // 到门票在海运完成后仍处于"后端派送中/快递查询中"，归入进行中；
+                    // 只有后端也签收/收尾(displayKey === arrived)才算完成
+                    if (activeTab.value === 'progress') return orders.value.filter((o) => displayKey(o) !== 'arrived');
+                    if (activeTab.value === 'done') return orders.value.filter((o) => displayKey(o) === 'arrived');
                     return orders.value;
                 });
 
@@ -586,6 +661,7 @@
                                     }
                                     o.trackingState = 'done';
                                     if (data.lastMile) o.lastMileInfo = data.lastMile;
+                                    if (data.lastMileNote) o.lastMileNote = data.lastMileNote;
                                 } else if (data && data.pending) {
                                     // 首次订阅成功，飞驼正在去船司抓数据，稍后自动重试
                                     o.trackingState = 'pending';
@@ -625,7 +701,7 @@
                 return {
                     lang, isLoggedIn, code, customerName, activeTab, selectedOrder,
                     i18n, orders, filteredOrders,
-                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode, na, vesselText, transitDays
+                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode, na, vesselText, transitDays, displayKey, displayText
                 };
             }
         }).mount('#app');
