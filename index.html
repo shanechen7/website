@@ -269,6 +269,7 @@
                         <div style="text-align: right;">
                             <div :class="['status-tag', 'status-' + order.statusKey]">{{ order.statusText || getStatusText(order.statusKey) }}</div>
                             <div v-if="order.trackingState === 'loading'" class="track-hint">{{ i18n[lang].track_loading }}</div>
+                            <div v-else-if="order.trackingState === 'pending'" class="track-hint">{{ order.trackingError || i18n[lang].track_pending }}</div>
                             <div v-else-if="order.trackingState === 'none'" class="track-hint">{{ order.trackingError || i18n[lang].track_none }}</div>
                         </div>
                     </div>
@@ -418,7 +419,7 @@
                         customer: "当前客户", orders: "票货物", switch_code: "切换客户代码", empty_orders: "该客户暂无运单数据",
                         tab_all: "全部运单", tab_progress: "进行中", tab_done: "已完成",
                         bill_no: "提单号", pol: "起运港", pod: "目的港", etd: "开船", eta: "到港", volume: "货量",
-                        trace_title: "物流轨迹", no_data: "暂无数据", track_loading: "轨迹加载中…", track_none: "暂无轨迹数据",
+                        trace_title: "物流轨迹", no_data: "暂无数据", track_loading: "轨迹加载中…", track_none: "暂无轨迹数据", track_pending: "已订阅，轨迹获取中…",
                         last_mile: "后端派送", last_mile_carrier: "派送方式", last_mile_no: "派送单号",
                         carrier: "船公司", containers: "箱信息",
                         status_sailing: "航行中", status_port: "已进港", status_arrived: "已抵达",
@@ -433,7 +434,7 @@
                         customer: "Client", orders: "Shipments", switch_code: "Switch Code", empty_orders: "No shipments found for this client yet.",
                         tab_all: "All", tab_progress: "In Progress", tab_done: "Completed",
                         bill_no: "B/L No.", pol: "POL", pod: "POD", etd: "ETD", eta: "ETA", volume: "Volume",
-                        trace_title: "Logistics Trace", no_data: "N/A", track_loading: "Loading tracking…", track_none: "No tracking data",
+                        trace_title: "Logistics Trace", no_data: "N/A", track_loading: "Loading tracking…", track_none: "No tracking data", track_pending: "Subscribed, fetching…",
                         last_mile: "Last Mile", last_mile_carrier: "Carrier", last_mile_no: "Tracking No.",
                         carrier: "Carrier", containers: "Containers",
                         status_sailing: "Sailing", status_port: "At Port", status_arrived: "Arrived",
@@ -487,7 +488,9 @@
                 // 逐票拉取飞驼海运轨迹（并发 3，避免 Vercel 单函数 10s 超时）
                 // 一个提单号只发一次请求，多箱数据在 containers[] 里拿，不额外扣费
                 const loadTracking = async () => {
-                    const queue = orders.value.filter((o) => o.billNo || o.containerNo);
+                    const queue = orders.value.filter(
+                        (o) => (o.billNo || o.containerNo) && o.trackingState !== 'done'
+                    );
                     queue.forEach((o) => { o.trackingState = 'loading'; });
 
                     const worker = async () => {
@@ -530,6 +533,10 @@
                                     }
                                     o.trackingState = 'done';
                                     if (data.lastMile) o.lastMileInfo = data.lastMile;
+                                } else if (data && data.pending) {
+                                    // 首次订阅成功，飞驼正在去船司抓数据，稍后自动重试
+                                    o.trackingState = 'pending';
+                                    o.trackingError = (data && data.seaError) || i18n[lang.value].track_pending;
                                 } else {
                                     o.trackingState = 'none';
                                     o.trackingError = (data && data.seaError) || i18n[lang.value].track_none;
@@ -542,6 +549,13 @@
                     };
 
                     await Promise.all([worker(), worker(), worker()]);
+
+                    // 首次订阅的票数据还没抓到：30 秒后自动重试一次（不会重复扣费）
+                    const pending = orders.value.filter((o) => o.trackingState === 'pending' && !o._retried);
+                    if (pending.length) {
+                        pending.forEach((o) => { o._retried = true; });
+                        setTimeout(loadTracking, 30000);
+                    }
                 };
 
                 const switchCode = () => { isLoggedIn.value = false; code.value = ''; orders.value = []; };

@@ -91,6 +91,9 @@ module.exports = async (req, res) => {
                 sea = await p;
                 if (sea && sea.ok) {
                     cacheSet(seaKey, sea, isFinished(sea) ? TTL_DONE : TTL_ACTIVE);
+                } else if (sea && sea.pending) {
+                    // 订阅成功但数据还没抓到：只缓存 1 分钟，稍后会自动重试
+                    cacheSet(seaKey, sea, 60 * 1000);
                 }
             }
         }
@@ -121,6 +124,7 @@ module.exports = async (req, res) => {
             ok: true,
             sea: sea && sea.ok ? sea : null,
             seaError: sea && !sea.ok ? (sea.message || '暂无数据') : null,
+            pending: !!(sea && sea.pending),
             lastMile: lastMile && lastMile.ok ? lastMile : null,
             lastMileError: lastMile && !lastMile.ok ? (lastMile.message || '暂无数据') : null,
             lastMileNote,
