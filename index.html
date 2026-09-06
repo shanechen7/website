@@ -152,11 +152,11 @@
         .port-info { display: flex; flex-direction: column; align-items: center; justify-content: space-between; width: 80px; min-height: 52px; }
         .port-name { font-size: 18px; font-weight: 600; color: #333; }
         .port-label { font-size: 11px; color: #a0a0a0; }
-        .ship-days { font-size: 11px; color: #888; text-align: center; margin-top: 6px; }
-        .route-line { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; margin: 0 10px; }
+        .route-line { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; margin: 0 10px; align-self: stretch; }
         .dashed-line { width: 100%; border-top: 2px dashed #dcdcdc; }
-        .ship-icon-box { position: absolute; background: #f6f6f6; padding: 0 10px; line-height: 1; }
+        .ship-icon-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #f6f6f6; padding: 0 10px; line-height: 1; }
         .ship-icon { color: #fc5185; font-size: 26px; display: inline-block; animation: sailing 2.5s ease-in-out infinite; }
+        .ship-days { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); font-size: 11px; color: #a0a0a0; white-space: nowrap; }
         @keyframes sailing {
             0% { transform: translateY(0) rotate(-3deg); }
             50% { transform: translateY(-3px) rotate(3deg); }
