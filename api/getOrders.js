@@ -19,24 +19,44 @@ module.exports = async (req, res) => {
 
     // ============================================================
     // 工具：宽容的列名查找
-    // 1) 先精确匹配；2) 再忽略 括号/空格/大小写 后匹配。
-    // 这样即使 SeaTable 里实际是 "B/L(提单号)"（半角括号）也能取到值。
+    // SeaTable 行数据里用的是列的 key（短 ID，如 0000/M4g），不是列的显示名。
+    // 这里先用 metadata 拿到 "列名 -> key" 的映射，再用 key 去取值。
+    // 兼容：括号/空格/大小写、中英文候选名。
     // ============================================================
+    let colNameToKey = {};   // 列显示名 -> 列 key
+    let colKeyToName = {};   // 列 key -> 列显示名（仅 debug 用）
+
     const norm = (s) => String(s == null ? '' : s)
         .replace(/[\s()（）[\]【】/／\\,，。:：;；-]/g, '')
         .toLowerCase();
 
     const getCol = (row, ...names) => {
         if (!row) return null;
-        // 1) 精确匹配（按顺序，第一个命中的返回）
+        const colKeys = Object.keys(colNameToKey);
+
+        // 1) 用 metadata 的 "列名 -> key" 映射取值（精确 + 模糊）
+        for (const n of names) {
+            if (colNameToKey[n]) {
+                const v = row[colNameToKey[n]];
+                if (v !== undefined && v !== null && v !== '') return v;
+            }
+        }
+        for (const n of names) {
+            const matchedName = colKeys.find((k) => norm(k) === norm(n));
+            if (matchedName && colNameToKey[matchedName]) {
+                const v = row[colNameToKey[matchedName]];
+                if (v !== undefined && v !== null && v !== '') return v;
+            }
+        }
+
+        // 2) 兜底：直接按行里的 key 匹配（兼容 key 就是显示名的情况）
         for (const n of names) {
             const v = row[n];
             if (v !== undefined && v !== null && v !== '') return v;
         }
-        // 2) 模糊匹配（忽略括号、空格、大小写）
-        const keys = Object.keys(row);
+        const rowKeys = Object.keys(row);
         for (const n of names) {
-            const key = keys.find((k) => norm(k) === norm(n));
+            const key = rowKeys.find((k) => norm(k) === norm(n));
             if (key) {
                 const v = row[key];
                 if (v !== undefined && v !== null && v !== '') return v;
@@ -101,15 +121,8 @@ module.exports = async (req, res) => {
         }
 
         // ============================================================
-        // 2. 查询该子表的行
-        //    优先使用 token 接口返回的 dtable_server，失败再退回 api-gateway
-        //    鉴权头按官方文档用 Bearer；个别老版本兼容 Token（自动重试一次）
+        // 2. 通用请求工具（Bearer 为主，兼容 Token）
         // ============================================================
-        const tableQ = `table_name=${encodeURIComponent(code)}&limit=1000`;
-        const server = (dtable_server || SEATABLE_URL).replace(/\/$/, '');
-        const urlV1 = `${server}/api/v1/dtables/${dtable_uuid}/rows/?${tableQ}`;
-        const urlGateway = `${SEATABLE_URL}/api-gateway/api/v2/dtables/${dtable_uuid}/rows/?${tableQ}`;
-
         const fetchRows = async (url) => {
             const makeReq = (authHeader) => fetch(url, {
                 headers: {
@@ -126,9 +139,45 @@ module.exports = async (req, res) => {
             return r1;
         };
 
-        let rowsRes = await fetchRows(urlV1);
+        // ============================================================
+        // 3. 获取 Base 元数据：拿到"列名 -> key"的映射
+        //    SeaTable 行数据里的键是列 key（如 0000/M4g），不是列显示名。
+        // ============================================================
+        const server = (dtable_server || SEATABLE_URL).replace(/\/$/, '');
+        const metaV1 = `${server}/api/v1/dtables/${dtable_uuid}/metadata/`;
+        const metaGateway = `${SEATABLE_URL}/api-gateway/api/v2/dtables/${dtable_uuid}/metadata/`;
+        let metaRes = await fetchRows(metaV1);
+        if (!metaRes.ok) {
+            const gw = await fetchRows(metaGateway);
+            if (gw.ok) metaRes = gw;
+        }
+        if (!metaRes.ok) {
+            const errBody = await metaRes.text();
+            console.error('[SeaTable] 元数据获取失败:', metaRes.status, errBody);
+            return res.status(502).json({ error: '无法获取 SeaTable 子表结构（metadata），请检查 Token 权限' });
+        }
+        const metaData = await metaRes.json();
+        const tables = metaData?.metadata?.tables || metaData?.tables || [];
+        const targetTable = tables.find((t) => t.name === code);
+        if (!targetTable) {
+            return res.status(404).json({ error: `未找到名为"${code}"的子表，请检查客户代码` });
+        }
+        for (const col of (targetTable.columns || [])) {
+            if (col.name && col.key) {
+                colNameToKey[col.name] = col.key;
+                colKeyToName[col.key] = col.name;
+            }
+        }
+
+        // ============================================================
+        // 4. 查询该子表的行
+        // ============================================================
+        const tableQ = `table_name=${encodeURIComponent(code)}&limit=1000`;
+        const rowsV1 = `${server}/api/v1/dtables/${dtable_uuid}/rows/?${tableQ}`;
+        const rowsGateway = `${SEATABLE_URL}/api-gateway/api/v2/dtables/${dtable_uuid}/rows/?${tableQ}`;
+        let rowsRes = await fetchRows(rowsV1);
         if (!rowsRes.ok) {
-            const gw = await fetchRows(urlGateway);
+            const gw = await fetchRows(rowsGateway);
             if (gw.ok) rowsRes = gw;
         }
 
@@ -192,14 +241,15 @@ module.exports = async (req, res) => {
         });
 
         // ============================================================
-        // 4. 返回。带 debug=1 时附上 SeaTable 真实列名，方便排查
+        // 5. 返回。带 debug=1 时附上"列名 -> key"映射，方便排查
         // ============================================================
         if (debug) {
-            const presentColumns = Array.from(new Set(rawRows.flatMap((r) => Object.keys(r))));
+            const tableColumns = Object.entries(colNameToKey).map(([name, key]) => ({ key, name }));
             return res.status(200).json({
                 ok: true,
                 count: rawRows.length,
-                presentColumns,
+                tableName: code,
+                tableColumns,
                 sample: rawRows[0] || null,
                 orders: frontendOrders,
             });
