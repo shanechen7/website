@@ -299,6 +299,9 @@
                     </div>
                 </div>
             </div>
+            <div v-if="orders.length === 0" style="text-align: center; padding: 60px 0; color: #999; font-size: 15px;">
+                {{ i18n[lang].empty_orders }}
+            </div>
         </div>
 
         <!-- ================= 详情页模态框 ================= -->
@@ -377,8 +380,8 @@
                         sys_title: "Shane的船务记", func_desc: "实时查询货物物流状态", lang_switch: "English",
                         login_title: "实时查询货物物流状态", welcome: "欢迎登录",
                         input_label: "专属代码", input_placeholder: "请输入您的专属客户代码",
-                        btn_query: "立即查询", tip1: "客户代码请联系 Shane 获取", tip2: "数据由 BLM Logistic 维护",
-                        customer: "当前客户", orders: "票货物", switch_code: "切换客户代码",
+                        btn_query: "立即查询",                         tip1: "客户代码请联系 Shane 获取", tip2: "数据由 BLM Logistic 维护",
+                        customer: "当前客户", orders: "票货物", switch_code: "切换客户代码", empty_orders: "该客户暂无运单数据",
                         tab_all: "全部运单", tab_progress: "进行中", tab_done: "已完成",
                         bill_no: "提单号", pol: "起运港", pod: "目的港", etd: "开船", eta: "到港", volume: "货量",
                         trace_title: "物流轨迹", 
@@ -390,8 +393,8 @@
                         sys_title: "Shane's Logistics", func_desc: "Real-time Cargo Status Tracking", lang_switch: "中文",
                         login_title: "Real-time Cargo Status Tracking", welcome: "Welcome Back",
                         input_label: "Exclusive Code", input_placeholder: "Enter your exclusive client code",
-                        btn_query: "Search Now", tip1: "Please contact Shane for your code", tip2: "Powered by BLM Logistic",
-                        customer: "Client", orders: "Shipments", switch_code: "Switch Code",
+                        btn_query: "Search Now",                         tip1: "Please contact Shane for your code", tip2: "Powered by BLM Logistic",
+                        customer: "Client", orders: "Shipments", switch_code: "Switch Code", empty_orders: "No shipments found for this client yet.",
                         tab_all: "All", tab_progress: "In Progress", tab_done: "Completed",
                         bill_no: "B/L No.", pol: "POL", pod: "POD", etd: "ETD", eta: "ETA", volume: "Volume",
                         trace_title: "Logistics Trace", 
@@ -417,14 +420,20 @@
                     
                     try {
                         // 请求同目录下的 api/getOrders 接口
-                        const res = await fetch(`/api/getOrders?code=${code.value}`);
+                        const res = await fetch(`/api/getOrders?code=${encodeURIComponent(code.value)}`);
+                        let data = null;
+                        try { data = await res.json(); } catch (e) { /* 非 JSON 响应 */ }
                         
-                        if (res.ok) {
-                            const data = await res.json();
-                            orders.value = data; // 把后端拿到的数据塞进 Vue 里
+                        if (res.ok && data) {
+                            // 兼容两种返回格式：纯数组，或 { orders: [...] }
+                            orders.value = Array.isArray(data) ? data
+                                : (Array.isArray(data.orders) ? data.orders : []);
                             isLoggedIn.value = true; // 登录成功，切换页面
+                            if (orders.value.length === 0) {
+                                alert(i18n[lang.value].empty_orders);
+                            }
                         } else {
-                            alert('代码错误或查询失败 (状态码: ' + res.status + ')');
+                            alert((data && data.error) ? data.error : '代码错误或查询失败 (状态码: ' + res.status + ')');
                         }
                     } catch (err) {
                         alert('网络请求出错: ' + err.message);
@@ -434,8 +443,8 @@
                 const switchCode = () => { isLoggedIn.value = false; code.value = ''; orders.value = []; };
                 const viewDetail = (order) => { selectedOrder.value = order; };
                 
-                const getStatusText = (key) => i18n[lang.value][`status_${key}`];
-                const getTraceNode = (key) => i18n[lang.value][`node_${key}`];
+                const getStatusText = (key) => i18n[lang.value][`status_${key}`] || key;
+                const getTraceNode = (key) => i18n[lang.value][`node_${key}`] || key;
 
                 // --- 5. 返回给模板使用的数据和方法 ---
                 return {
