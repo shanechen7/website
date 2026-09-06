@@ -1,6 +1,5 @@
 // api/getOrders.js
 
-// 注意这里改成了 module.exports
 module.exports = async (req, res) => {
     const { code } = req.query;
 
@@ -16,32 +15,33 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // 用 API Token 去换取 Access Token
-        const tokenRes = await fetch(`${SEATABLE_URL}/api-gateway/api/v2/dtables/app-access-token/`, {
+        // 【修复点1】按照手册，修改为正确的 v2.1 路径
+        // 【修复点2】按照手册，使用 Bearer 鉴权
+        const tokenRes = await fetch(`${SEATABLE_URL}/api/v2.1/dtable/app-access-token/`, {
             method: 'GET',
             headers: {
-                'Authorization': `Token ${API_TOKEN}`,
-                'Content-Type': 'application/json'
+                'Accept': 'application/json; charset=utf-8; indent=4',
+                'Authorization': `Bearer ${API_TOKEN}`
             }
         });
 
         if (!tokenRes.ok) {
             const errBody = await tokenRes.text();
             console.error("SeaTable Token 获取失败:", errBody);
-            return res.status(401).json({ error: "SeaTable API Token 无效或未授权读取该表" });
+            return res.status(401).json({ error: "SeaTable API Token 鉴权失败" });
         }
 
         const tokenData = await tokenRes.json();
         const { dtable_uuid, access_token } = tokenData;
 
-        // 查询对应子表的数据
+        // 查询对应子表的数据 (这个路径是正确的，保持不变)
         const tableName = encodeURIComponent(code);
         const rowsRes = await fetch(
             `${SEATABLE_URL}/api-gateway/api/v2/dtables/${dtable_uuid}/rows/?table_name=${tableName}&limit=1000`,
             {
                 headers: {
                     'Authorization': `Token ${access_token}`,
-                    'Content-Type': 'application/json'
+                    'Accept': 'application/json; charset=utf-8; indent=4'
                 }
             }
         );
@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
         if (!rowsRes.ok) {
             const errBody = await rowsRes.text();
             console.error("SeaTable 获取行失败:", errBody);
-            return res.status(404).json({ error: "未找到该客户的运单数据或子表名不匹配" });
+            return res.status(404).json({ error: "未找到该客户子表，请检查子表名是否与客户代码完全一致" });
         }
 
         const seaTableData = await rowsRes.json();
