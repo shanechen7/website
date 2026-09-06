@@ -436,15 +436,16 @@
                     <div class="accent-bar"></div>
                     <h3 class="trace-title">{{ i18n[lang].trace_title }}</h3>
                     <div class="timeline">
-                        <div class="timeline-item" v-for="(trace, index) in selectedOrder.traces" :key="index">
+                        <div class="timeline-item" v-for="(trace, index) in modalTraces(selectedOrder)" :key="index">
                             <div class="timeline-left">
                                 <div :class="['dot-timeline', trace.done && 'dot-done', trace.current && 'dot-current']"></div>
-                                <div :class="['line-timeline', trace.done && 'line-done', index === selectedOrder.traces.length - 1 && 'hidden']"></div>
+                                <div :class="['line-timeline', trace.done && 'line-done', index === modalTraces(selectedOrder).length - 1 && 'hidden']"></div>
                             </div>
                             <div class="timeline-right">
                                 <div :class="['node-title', trace.current && 'node-current-text']">{{ traceText(trace) }}</div>
-                                <div class="node-time">{{ trace.time }}<span v-if="trace.estimated" class="est">{{ i18n[lang].estimated }}</span></div>
-                                <div class="node-loc">{{ trace.location }}</div>
+                                <div class="node-time" v-if="trace.time">{{ trace.time }}<span v-if="trace.estimated" class="est">{{ i18n[lang].estimated }}</span></div>
+                                <div class="node-loc" v-if="trace.waiting">{{ i18n[lang].trace_waiting_hint }}</div>
+                                <div class="node-loc" v-else-if="trace.location">{{ trace.location }}</div>
                             </div>
                         </div>
                     </div>
@@ -506,6 +507,7 @@
                         tab_all: "全部运单", tab_progress: "进行中", tab_done: "已完成",
                         bill_no: "提单号", pol: "起运港", pod: "目的港", etd: "开船", eta: "到港", volume: "货量",
                         trace_title: "物流轨迹", no_data: "暂无数据", track_loading: "轨迹加载中…", track_none: "暂无轨迹数据", track_pending: "已订阅，轨迹获取中…",
+                        trace_waiting: "等待更新中", trace_waiting_hint: "船舶开航后轨迹将自动更新",
                         last_mile: "交付 & 派送", last_mile_carrier: "派送方式", last_mile_no: "派送单号", dmod: "交付方式",
                         last_mile_delivering: "后端派送中", express_querying: "快递查询中", express_missing_no: "缺少派送单号", express_signed: "已签收", delivered: "已交付",
                         carrier: "船公司", containers: "箱信息",
@@ -524,6 +526,7 @@
                         tab_all: "All", tab_progress: "In Progress", tab_done: "Completed",
                         bill_no: "B/L No.", pol: "POL", pod: "POD", etd: "ETD", eta: "ETA", volume: "Volume",
                         trace_title: "Logistics Trace", no_data: "N/A", track_loading: "Loading tracking…", track_none: "No tracking data", track_pending: "Subscribed, fetching…",
+                        trace_waiting: "Awaiting Update", trace_waiting_hint: "Tracking will auto-update once the vessel departs",
                         last_mile: "Delivery & Last Mile", last_mile_carrier: "Carrier", last_mile_no: "Tracking No.", dmod: "Delivery Mode",
                         last_mile_delivering: "Last-mile Delivering", express_querying: "Courier Tracking…", express_missing_no: "Missing tracking No.", express_signed: "Delivered", delivered: "Delivered",
                         carrier: "Carrier", containers: "Containers",
@@ -829,6 +832,27 @@
                     if (lang.value === 'en') return c.statusEn || c.status || i18n[lang.value].no_data;
                     return c.status || i18n[lang.value].no_data;
                 };
+                // 详情页物流轨迹：
+                // 只要没有任何"实际发生"的轨迹节点（还没开船/还没装箱/飞驼还没抓到数据），
+                // 就不把"预计"的未来节点当成当前状态，统一显示"等待更新中"
+                const modalTraces = (o) => {
+                    const tr = (o && Array.isArray(o.traces)) ? o.traces : [];
+                    const hasRealEvent = tr.some((t) => !t.estimated);
+                    if (!hasRealEvent) {
+                        return [{
+                            key: 'waiting',
+                            text: i18n.zh.trace_waiting,
+                            textEn: i18n.en.trace_waiting,
+                            time: (o && o.etd) || '',
+                            location: '',
+                            estimated: !!o.etd,   // 有 ETD 时带"预计"标注
+                            done: false,
+                            current: true,
+                            waiting: true,
+                        }];
+                    }
+                    return tr;
+                };
 
                 // --- 5. 启动：有保存的代码就直接自动登录 ---
                 autoLogin();
@@ -837,7 +861,7 @@
                 return {
                     lang, isLoggedIn, booting, remember, code, customerName, activeTab, selectedOrder,
                     i18n, orders, filteredOrders,
-                    toggleLang, login, logout, viewDetail, getStatusText, getTraceNode, na, vesselText, transitDays, displayKey, displayText, isDoorDelivery, traceText, containerStatusText
+                    toggleLang, login, logout, viewDetail, getStatusText, getTraceNode, na, vesselText, transitDays, displayKey, displayText, isDoorDelivery, traceText, containerStatusText, modalTraces
                 };
             }
         }).mount('#app');
