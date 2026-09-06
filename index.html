@@ -141,6 +141,7 @@
         .bill-no { font-size: 18px; font-weight: 500; color: #333; margin-bottom: 6px; }
         .vessel-text { font-size: 12px; color: #999; }
         .track-hint { font-size: 11px; color: #aaa; margin-top: 8px; }
+        .est { font-size: 10px; color: #aaa; margin-left: 4px; font-weight: 400; }
         
         .status-tag { font-size: 12px; padding: 5px 14px; border-radius: 6px; font-weight: 500; height: fit-content; }
         .status-sailing { background: rgba(252, 81, 133, 0.1); color: #fc5185; }
@@ -290,12 +291,12 @@
                     <div class="card-bottom">
                         <div class="bottom-item">
                             <div class="b-label">{{ i18n[lang].etd }}</div>
-                            <div class="b-value">{{ na(order.etd) }}</div>
+                            <div class="b-value">{{ na(order.etd) }}<span v-if="order.etdEstimated" class="est">预计</span></div>
                         </div>
                         <div class="divider"></div>
                         <div class="bottom-item">
                             <div class="b-label">{{ i18n[lang].eta }}</div>
-                            <div class="b-value">{{ na(order.eta) }}</div>
+                            <div class="b-value">{{ na(order.eta) }}<span v-if="order.etaEstimated" class="est">预计</span></div>
                         </div>
                         <div class="divider"></div>
                         <div class="bottom-item">
@@ -352,7 +353,7 @@
                             </div>
                             <div class="timeline-right">
                                 <div :class="['node-title', trace.current && 'node-current-text']">{{ trace.text || getTraceNode(trace.key) }}</div>
-                                <div class="node-time">{{ trace.time }}</div>
+                                <div class="node-time">{{ trace.time }}<span v-if="trace.estimated" class="est">预计</span></div>
                                 <div class="node-loc">{{ trace.location }}</div>
                             </div>
                         </div>
@@ -485,6 +486,21 @@
                 const na = (v) => (v === undefined || v === null || v === '')
                     ? i18n[lang.value].no_data : v;
 
+                // 飞驼时间格式 2026/08/22 04:00:00 -> 2026-08-22（卡片用）
+                const fmtDate = (v) => {
+                    if (!v) return '';
+                    const m = String(v).match(/(\d{4})[/_-](\d{2})[/_-](\d{2})/);
+                    return m ? `${m[1]}-${m[2]}-${m[3]}` : String(v);
+                };
+                // 轨迹节点用到分钟：2026/08/22 04:58:01 -> 2026-08-22 04:58
+                const fmtDateTime = (v) => {
+                    if (!v) return '';
+                    const m = String(v).match(/(\d{4})[/_-](\d{2})[/_-](\d{2})[ T](\d{2}):(\d{2})/);
+                    return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : fmtDate(v);
+                };
+                // "LONG BEACH,CA" -> "LONG BEACH"（港口名太长会撑破卡片）
+                const shortPort = (v) => (v ? String(v).split(',')[0].trim() : '');
+
                 // 逐票拉取飞驼海运轨迹（并发 3，避免 Vercel 单函数 10s 超时）
                 // 一个提单号只发一次请求，多箱数据在 containers[] 里拿，不额外扣费
                 const loadTracking = async () => {
@@ -510,25 +526,30 @@
                                     const t = data.sea;
                                     o.vessel = t.vessel || o.vessel;
                                     o.voyage = t.voyage || o.voyage;
-                                    o.pol = t.pol || o.pol;
-                                    o.pod = t.pod || o.pod;
-                                    o.etd = t.etd || o.etd;
-                                    o.eta = t.eta || o.eta;
+                                    o.pol = shortPort(t.pol) || o.pol;
+                                    o.pod = shortPort(t.pod) || o.pod;
+                                    // 有实际时间（ATD/ATA）优先显示，没有才用预计（ETD/ETA）并标记"预计"
+                                    o.etd = fmtDate(t.atd || t.etd) || o.etd;
+                                    o.etdEstimated = !t.atd;
+                                    o.eta = fmtDate(t.ata || t.eta) || o.eta;
+                                    o.etaEstimated = !t.ata;
                                     o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : o.statusKey;
                                     o.statusText = t.statusText || '';
                                     o.carrierName = t.carrier || '';
                                     o.totalContainers = t.totalContainers || '';
                                     o.containers = t.containers || [];
-                                    // 飞驼真实节点：最后一条作为当前节点
+                                    // 飞驼真实节点：已发生的点亮，第一个"预计"节点作为当前节点
                                     if (t.traces && t.traces.length) {
-                                        const n = t.traces.length;
+                                        const firstPending = t.traces.findIndex((x) => x.estimated);
+                                        const curIdx = firstPending === -1 ? t.traces.length - 1 : firstPending;
                                         o.traces = t.traces.map((x, i) => ({
                                             key: x.code,
                                             text: x.text,
-                                            time: x.time,
+                                            time: fmtDateTime(x.time),
                                             location: x.place,
-                                            done: i < n - 1,
-                                            current: i === n - 1,
+                                            estimated: x.estimated,
+                                            done: !x.estimated,
+                                            current: i === curIdx,
                                         }));
                                     }
                                     o.trackingState = 'done';
