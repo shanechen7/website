@@ -11,8 +11,11 @@ const { trackContainer, trackExpress } = require('../lib/freightower');
 const cache = new Map();          // key -> { value, expireAt }
 const inflight = new Map();       // key -> Promise（防同一单号并发重复请求）
 
-const HOUR = 60 * 60 * 1000;
-const TTL_ACTIVE = 6 * HOUR;      // 在途：6 小时
+const MIN = 60 * 1000;
+const HOUR = 60 * MIN;
+const TTL_ACTIVE = 1 * HOUR;      // 在途且有真实节点/ATD：1 小时
+const TTL_EMPTY = 3 * MIN;        // 订阅成功但还没抓到节点（NODATA/空）：3 分钟，频繁回飞驼取最新
+const TTL_PENDING = 1 * MIN;      // 20001 数据抓取中：1 分钟
 const TTL_DONE = 7 * 24 * HOUR;   // 已完成/已签收：7 天
 
 function cacheGet(key) {
@@ -43,6 +46,13 @@ const isFinished = (r) => {
     }
     return false;
 };
+
+// "真的有货"才算在途数据：有实际离/到港时间，或已返回真实轨迹节点
+// （20000 + NODATA/空轨迹 的空结果不算，需要短缓存、频繁回飞驼取最新）
+const hasRealEvidence = (r) => !!(
+    r && (r.atd || r.ata) ||
+    (r && Array.isArray(r.traces) && r.traces.length > 0)
+);
 
 module.exports = async (req, res) => {
     const {
@@ -75,10 +85,19 @@ module.exports = async (req, res) => {
             } else {
                 const p = (async () => {
                     try {
-                        // 优先提单号；失败/无数据再退回箱号
+                        // 1) 优先提单号（一票多箱只发一次请求，避免重复扣费）
                         let r = billNo
                             ? await trackContainer({ billNo, containerNo: '', carrierCode: carrier, businessNo: '' })
                             : { ok: false };
+                        // 2) 提单号返回 ok 但只是空壳（订阅后还没抓到节点）且票上有箱号时，
+                        //    再按箱号查一次对比：飞驼按"业务单号"分开维护数据，
+                        //    同一箱的轨迹常常只有按箱号订阅才有（你后台就是按箱号查到的）。
+                        //    取两条里真正有节点的那条，避免"提单号空结果"把真实数据挡在门外
+                        if (r.ok && !hasRealEvidence(r) && containerNo) {
+                            const byBox = await trackContainer({ billNo: '', containerNo, carrierCode: carrier, businessNo: '' });
+                            if (byBox.ok && hasRealEvidence(byBox)) r = byBox;
+                        }
+                        // 3) 提单号完全查不到时才退回箱号
                         if (!r.ok && containerNo) {
                             r = await trackContainer({ billNo: '', containerNo, carrierCode: carrier, businessNo: '' });
                         }
@@ -90,10 +109,19 @@ module.exports = async (req, res) => {
                 inflight.set(seaKey, p);
                 sea = await p;
                 if (sea && sea.ok) {
-                    cacheSet(seaKey, sea, isFinished(sea) ? TTL_DONE : TTL_ACTIVE);
+                    // 缓存策略关键：
+                    //   - 已完成（到港/签收）           -> 7 天，避免重复订阅扣费
+                    //   - 在途且有真实节点/ATD          -> 1 小时
+                    //   - 已订阅但还没抓到节点(空结果)  -> 只缓存 3 分钟，
+                    //     否则空结果被缓存 6 小时，飞驼后台一抓完数据，
+                    //     网站这边仍会一直命中旧空缓存，迟迟显示不出来
+                    const ttl = isFinished(sea) ? TTL_DONE
+                        : hasRealEvidence(sea) ? TTL_ACTIVE
+                        : TTL_EMPTY;
+                    cacheSet(seaKey, sea, ttl);
                 } else if (sea && sea.pending) {
-                    // 订阅成功但数据还没抓到：只缓存 1 分钟，稍后会自动重试
-                    cacheSet(seaKey, sea, 60 * 1000);
+                    // 订阅成功但数据还在抓取中（20001）：短缓存，前端稍后重试
+                    cacheSet(seaKey, sea, TTL_PENDING);
                 }
             }
         }
