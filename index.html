@@ -149,9 +149,10 @@
         .status-arrived { background: #333; color: #fff; }
 
         .route-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .port-info { display: flex; flex-direction: column; align-items: center; width: 80px; }
+        .port-info { display: flex; flex-direction: column; align-items: center; justify-content: space-between; width: 80px; min-height: 52px; }
         .port-name { font-size: 18px; font-weight: 600; color: #333; }
-        .port-label { font-size: 11px; color: #a0a0a0; margin-top: 4px; }
+        .port-label { font-size: 11px; color: #a0a0a0; }
+        .ship-days { font-size: 11px; color: #888; text-align: center; margin-top: 6px; }
         .route-line { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; margin: 0 10px; }
         .dashed-line { width: 100%; border-top: 2px dashed #dcdcdc; }
         .ship-icon-box { position: absolute; background: #f6f6f6; padding: 0 10px; line-height: 1; }
@@ -252,9 +253,9 @@
                 </div>
 
                 <div class="filter-tabs">
-                    <div :class="['tab-item', activeTab === 'all' && 'active']" @click="activeTab = 'all'">{{ i18n[lang].tab_all }}</div>
                     <div :class="['tab-item', activeTab === 'progress' && 'active']" @click="activeTab = 'progress'">{{ i18n[lang].tab_progress }}</div>
                     <div :class="['tab-item', activeTab === 'done' && 'active']" @click="activeTab = 'done'">{{ i18n[lang].tab_done }}</div>
+                    <div :class="['tab-item', activeTab === 'all' && 'active']" @click="activeTab = 'all'">{{ i18n[lang].tab_all }}</div>
                 </div>
             </div>
 
@@ -500,6 +501,16 @@
                 };
                 // "LONG BEACH,CA" -> "LONG BEACH"（港口名太长会撑破卡片）
                 const shortPort = (v) => (v ? String(v).split(',')[0].trim() : '');
+
+                // 预计航程天数：实际开船（ATD）到预计/实际到港（ATA/ETA）的天数
+                const transitDays = (o) => {
+                    if (!o.atdRaw) return '';
+                    const a = Date.parse(o.atdRaw);
+                    const e = Date.parse(o.etaRaw || '');
+                    if (isNaN(a) || isNaN(e) || e <= a) return '';
+                    const d = Math.round((e - a) / 86400000);
+                    return d > 0 ? `≈${d} 天` : '';
+                };
 
                 // 逐票拉取飞驼海运轨迹（并发 3，避免 Vercel 单函数 10s 超时）
                 // 一个提单号只发一次请求，多箱数据在 containers[] 里拿，不额外扣费
