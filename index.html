@@ -655,8 +655,9 @@
 
                         if (res.ok && data) {
                             // 兼容两种返回格式：纯数组，或 { orders: [...] }
-                            orders.value = Array.isArray(data) ? data
+                            const fresh = Array.isArray(data) ? data
                                 : (Array.isArray(data.orders) ? data.orders : []);
+                            orders.value = syncOrders(fresh);
                             isLoggedIn.value = true; // 登录成功，切换页面
                             if (orders.value.length === 0) {
                                 if (!silent) alert(i18n[lang.value].empty_orders);
@@ -743,6 +744,105 @@
                     return d > 0 ? `${d}${i18n[lang.value].days}` : '';
                 };
 
+                // 飞驼结果判定"整单完成"（与后端缓存 TTL_DONE 一致）：已到港，或带过去的完成时间
+                const seaIsFinished = (t) => {
+                    if (!t) return false;
+                    if (t.stateKey === 'arrived') return true;
+                    if (t.endTime) {
+                        const ts = Date.parse(String(t.endTime).replace(/\//g, '-'));
+                        if (!isNaN(ts) && ts < Date.now()) return true;
+                    }
+                    return false;
+                };
+
+                // 把 /api/track 返回的 sea 合并进运单对象（卡片 + 详情轨迹共用）
+                const applySeaToOrder = (o, t) => {
+                    if (!o || !t) return;
+                    o.vessel = t.vessel || o.vessel;
+                    o.voyage = t.voyage || o.voyage;
+                    o.pol = shortPort(t.pol) || o.pol;
+                    o.pod = shortPort(t.pod) || o.pod;
+                    // 有实际时间（ATD/ATA）优先显示，没有才用预计（ETD/ETA）
+                    o.etd = fmtDate(t.atd || t.etd) || o.etd;
+                    o.eta = fmtDate(t.ata || t.eta) || o.eta;
+                    o.atdRaw = t.atd || '';
+                    o.etaRaw = t.ata || t.eta || '';
+                    if (!o.volume && t.totalContainers) o.volume = t.totalContainers;
+                    // 状态以飞驼为准（表格 State 仅"已交付"等人工收尾才参考）
+                    o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : '';
+                    o.statusText = t.statusText || '';
+                    o.statusTextEn = t.statusTextEn || '';
+                    o.carrierName = t.carrier || '';
+                    o.totalContainers = t.totalContainers || '';
+                    o.containers = t.containers || [];
+                    // 飞驼真实节点：已发生的点亮，第一个"预计"节点作为当前节点
+                    if (t.traces && t.traces.length) {
+                        const firstPending = t.traces.findIndex((x) => x.estimated);
+                        const curIdx = firstPending === -1 ? t.traces.length - 1 : firstPending;
+                        o.traces = t.traces.map((x, i) => ({
+                            key: x.code,
+                            text: x.text,
+                            textEn: x.textEn,
+                            time: fmtDateTime(x.time),
+                            location: x.place,
+                            estimated: x.estimated,
+                            done: !x.estimated,
+                            current: i === curIdx,
+                        }));
+                    }
+                };
+
+                // ============================================================
+                // "已完成不再查飞驼"的本地记忆 + 快照（避免对已完成单号重复订阅扣费）
+                //   记录 keyed by 订单 id，值 { finished, sea: 最近一次飞驼结果快照 }
+                //   - 每次查询成功都刷新快照：重载页面后仍能用快照渲染卡片/轨迹
+                //   - 真正"整单完成"（CY-CY 已到港；或到门 + 货代在表格 State 标"已交付/已签收"）
+                //     后记 finished，之后的登录/刷新不再发 /api/track，绝不再订阅
+                //   - 同步 SeaTable 列表时，把"表格里已删的行"对应的本地记录一起清掉（防幽灵卡片）
+                // ============================================================
+                const doneStoreKey = () => 'shane_done_' + String(code.value || '').trim();
+                const loadDoneStore = () => {
+                    try { return JSON.parse(localStorage.getItem(doneStoreKey()) || '{}'); } catch (e) { return {}; }
+                };
+                const saveDoneStore = (s) => {
+                    try { localStorage.setItem(doneStoreKey(), JSON.stringify(s)); } catch (e) {}
+                };
+
+                // 用 SeaTable 最新列表同步页面：
+                //   - 已删行 -> 从页面与本地记录中消失
+                //   - 重放本地快照，避免刷新后轨迹/到港时间变空白
+                //   - 已完成（表格 State=到港/已交付/已签收，或本地记忆 finished）-> trackingState=done，不再查
+                const syncOrders = (fresh) => {
+                    const arr = fresh || [];
+                    const seen = new Set(arr.map((f) => String(f.id)));
+                    const store = loadDoneStore();
+                    for (const id of Object.keys(store)) {
+                        if (!seen.has(id)) delete store[id];   // 表格里已删除的行：清掉本地记忆
+                    }
+                    const merged = arr.map((f) => {
+                        let rec = store[String(f.id)];
+                        // 同一行 SeaTable 记录被改成了一张新票（提单/箱号都变了）：
+                        // 作废旧票的"已完成"记忆，让新票正常查询
+                        const noNow = String(f.billNo || f.containerNo || '').toUpperCase();
+                        if (rec && rec.finished && rec.no && rec.no !== noNow) {
+                            delete store[String(f.id)];
+                            rec = null;
+                        }
+                        // 表格人工完成信号要先记下：下面重放本地快照时可能把状态覆盖成旧的
+                        const manualDone = f.statusKey === 'arrived';
+                        const o = { ...f };
+                        if (rec && rec.sea) applySeaToOrder(o, rec.sea);   // 用快照还原轨迹/到港时间等
+                        if ((rec && rec.finished) || manualDone) {
+                            if (manualDone) o.statusKey = 'arrived';        // 人工完成不被旧快照覆盖
+                            o.trackingState = 'done';                       // 已完成：不再进查询队列
+                            return o;
+                        }
+                        return o;
+                    });
+                    saveDoneStore(store);
+                    return merged;
+                };
+
                 // 逐票拉取飞驼海运轨迹（并发 3，避免 Vercel 单函数 10s 超时）
                 // 一个提单号只发一次请求，多箱数据在 containers[] 里拿，不额外扣费
                 const loadTracking = async () => {
@@ -765,45 +865,23 @@
                                 const data = await res.json().catch(() => null);
 
                                 if (data && data.ok && data.sea) {
-                                    const t = data.sea;
-                                    o.vessel = t.vessel || o.vessel;
-                                    o.voyage = t.voyage || o.voyage;
-                                    o.pol = shortPort(t.pol) || o.pol;
-                                    o.pod = shortPort(t.pod) || o.pod;
-                                    // 有实际时间（ATD/ATA）优先显示，没有才用预计（ETD/ETA）并标记"预计"
-                                    o.etd = fmtDate(t.atd || t.etd) || o.etd;
-                                    o.eta = fmtDate(t.ata || t.eta) || o.eta;
-                                    // 预计航程天数需要原始时间（不被格式化）
-                                    o.atdRaw = t.atd || '';
-                                    o.etaRaw = t.ata || t.eta || '';
-                                    // 货量兜底：表格里没填就用飞驼的箱量（如 "1*40HC"）
-                                    if (!o.volume && t.totalContainers) o.volume = t.totalContainers;
-                                    // 状态以飞驼为准：有状态就用飞驼的，没有/未识别就置空，
-                                    // 不沿用 SeaTable 表格里猜测出来的阶段（表格 State 仅"已交付"等人工收尾才参考）
-                                    o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : '';
-                                    o.statusText = t.statusText || '';
-                                    o.statusTextEn = t.statusTextEn || '';
-                                    o.carrierName = t.carrier || '';
-                                    o.totalContainers = t.totalContainers || '';
-                                    o.containers = t.containers || [];
-                                    // 飞驼真实节点：已发生的点亮，第一个"预计"节点作为当前节点
-                                    if (t.traces && t.traces.length) {
-                                        const firstPending = t.traces.findIndex((x) => x.estimated);
-                                        const curIdx = firstPending === -1 ? t.traces.length - 1 : firstPending;
-                                        o.traces = t.traces.map((x, i) => ({
-                                            key: x.code,
-                                            text: x.text,
-                                            textEn: x.textEn,
-                                            time: fmtDateTime(x.time),
-                                            location: x.place,
-                                            estimated: x.estimated,
-                                            done: !x.estimated,
-                                            current: i === curIdx,
-                                        }));
-                                    }
+                                    applySeaToOrder(o, data.sea);
                                     o.trackingState = 'done';
                                     if (data.lastMile) o.lastMileInfo = data.lastMile;
                                     if (data.lastMileNote) o.lastMileNote = data.lastMileNote;
+                                    // 每次成功查询都存一份本地快照（刷新后仍能渲染轨迹）
+                                    const store = loadDoneStore();
+                                    const rec = store[String(o.id)] || {};
+                                    rec.sea = data.sea;
+                                    rec.no = String(o.billNo || o.containerNo || '').toUpperCase();
+                                    rec.at = Date.now();
+                                    // 真正整单完成才记 finished：
+                                    // 到港(CY-CY)已到 -> 完成；到门(Door)要等货代在表格把 State 标"已交付/已签收"才算完成
+                                    if (seaIsFinished(data.sea) && !(isDoorDelivery(o) && !isManualDone(o))) {
+                                        rec.finished = true;
+                                    }
+                                    store[String(o.id)] = rec;
+                                    saveDoneStore(store);
                                 } else if (data && data.pending) {
                                     // 首次订阅成功，飞驼正在去船司抓数据，稍后自动重试
                                     o.trackingState = 'pending';
