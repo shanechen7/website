@@ -140,6 +140,7 @@
         .label { font-size: 12px; color: #999; margin-bottom: 4px; }
         .bill-no { font-size: 18px; font-weight: 500; color: #333; margin-bottom: 6px; }
         .vessel-text { font-size: 12px; color: #999; }
+        .track-hint { font-size: 11px; color: #aaa; margin-top: 8px; }
         
         .status-tag { font-size: 12px; padding: 5px 14px; border-radius: 6px; font-weight: 500; height: fit-content; }
         .status-sailing { background: rgba(252, 81, 133, 0.1); color: #fc5185; }
@@ -262,14 +263,18 @@
                     <div class="card-top">
                         <div>
                             <div class="label">{{ i18n[lang].bill_no }}</div>
-                            <div class="bill-no">{{ order.billNo }}</div>
-                            <div class="vessel-text">{{ order.vessel }} / {{ order.voyage }}</div>
+                            <div class="bill-no">{{ na(order.billNo) }}</div>
+                            <div class="vessel-text">{{ vesselText(order) }}</div>
                         </div>
-                        <div :class="['status-tag', 'status-' + order.statusKey]">{{ getStatusText(order.statusKey) }}</div>
+                        <div style="text-align: right;">
+                            <div :class="['status-tag', 'status-' + order.statusKey]">{{ order.statusText || getStatusText(order.statusKey) }}</div>
+                            <div v-if="order.trackingState === 'loading'" class="track-hint">{{ i18n[lang].track_loading }}</div>
+                            <div v-else-if="order.trackingState === 'none'" class="track-hint">{{ order.trackingError || i18n[lang].track_none }}</div>
+                        </div>
                     </div>
                     <div class="route-box">
                         <div class="port-info">
-                            <div class="port-name">{{ order.pol }}</div>
+                            <div class="port-name">{{ na(order.pol) }}</div>
                             <div class="port-label">{{ i18n[lang].pol }}</div>
                         </div>
                         <div class="route-line">
@@ -277,24 +282,24 @@
                             <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
                         </div>
                         <div class="port-info">
-                            <div class="port-name">{{ order.pod }}</div>
+                            <div class="port-name">{{ na(order.pod) }}</div>
                             <div class="port-label">{{ i18n[lang].pod }}</div>
                         </div>
                     </div>
                     <div class="card-bottom">
                         <div class="bottom-item">
                             <div class="b-label">{{ i18n[lang].etd }}</div>
-                            <div class="b-value">{{ order.etd }}</div>
+                            <div class="b-value">{{ na(order.etd) }}</div>
                         </div>
                         <div class="divider"></div>
                         <div class="bottom-item">
                             <div class="b-label">{{ i18n[lang].eta }}</div>
-                            <div class="b-value">{{ order.eta }}</div>
+                            <div class="b-value">{{ na(order.eta) }}</div>
                         </div>
                         <div class="divider"></div>
                         <div class="bottom-item">
                             <div class="b-label">{{ i18n[lang].volume }}</div>
-                            <div class="b-value">{{ order.volume }}</div>
+                            <div class="b-value">{{ na(order.volume) }}</div>
                         </div>
                     </div>
                 </div>
@@ -312,13 +317,13 @@
                     <div class="card-top">
                         <div>
                             <div class="label">{{ i18n[lang].bill_no }}</div>
-                            <div class="bill-no">{{ selectedOrder.billNo }}</div>
+                            <div class="bill-no">{{ na(selectedOrder.billNo) }}</div>
                         </div>
-                        <div :class="['status-tag', 'status-' + selectedOrder.statusKey]">{{ getStatusText(selectedOrder.statusKey) }}</div>
+                        <div :class="['status-tag', 'status-' + selectedOrder.statusKey]">{{ selectedOrder.statusText || getStatusText(selectedOrder.statusKey) }}</div>
                     </div>
                     <div class="route-box">
                         <div class="port-info">
-                            <div class="port-name">{{ selectedOrder.pol }}</div>
+                            <div class="port-name">{{ na(selectedOrder.pol) }}</div>
                             <div class="port-label">{{ i18n[lang].pol }}</div>
                         </div>
                         <div class="route-line">
@@ -326,12 +331,12 @@
                             <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
                         </div>
                         <div class="port-info">
-                            <div class="port-name">{{ selectedOrder.pod }}</div>
+                            <div class="port-name">{{ na(selectedOrder.pod) }}</div>
                             <div class="port-label">{{ i18n[lang].pod }}</div>
                         </div>
                     </div>
                     <div class="modal-vessel-info">
-                        {{ selectedOrder.vessel }} / {{ selectedOrder.voyage }}
+                        {{ vesselText(selectedOrder) }}
                     </div>
                 </div>
 
@@ -345,13 +350,42 @@
                                 <div :class="['line-timeline', trace.done && 'line-done', index === selectedOrder.traces.length - 1 && 'hidden']"></div>
                             </div>
                             <div class="timeline-right">
-                                <div :class="['node-title', trace.current && 'node-current-text']">{{ getTraceNode(trace.key) }}</div>
+                                <div :class="['node-title', trace.current && 'node-current-text']">{{ trace.text || getTraceNode(trace.key) }}</div>
                                 <div class="node-time">{{ trace.time }}</div>
                                 <div class="node-loc">{{ trace.location }}</div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- 一票多箱：飞驼一次查询返回该票所有箱，不额外扣费 -->
+                <div class="card" style="margin-top: 20px;" v-if="selectedOrder.containers && selectedOrder.containers.length">
+                    <div class="accent-bar"></div>
+                    <h3 class="trace-title">
+                        {{ i18n[lang].containers }}
+                        <span v-if="selectedOrder.totalContainers" style="font-weight: 400; color: #999; font-size: 13px;">({{ selectedOrder.totalContainers }})</span>
+                    </h3>
+                    <div v-for="c in selectedOrder.containers" :key="c.no"
+                         style="display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(135,133,162,0.1); font-size: 13px;">
+                        <span style="font-weight: 600;">{{ c.no }}</span>
+                        <span style="color: #8785a2;">{{ c.type }}</span>
+                        <span :style="selectedOrder.statusKey === 'arrived' ? 'color:#333;' : 'color:#fc5185;'">{{ c.status || i18n[lang].no_data }}</span>
+                    </div>
+                </div>
+
+                <!-- 后端派送：飞驼标准版未开通国际快递，先展示表格里人工维护的信息 -->
+                <div class="card" style="margin-top: 20px;" v-if="selectedOrder.lastMileCarrier || selectedOrder.lastMileTrackingNo">
+                    <div class="accent-bar"></div>
+                    <h3 class="trace-title">{{ i18n[lang].last_mile }}</h3>
+                    <div style="font-size: 14px; line-height: 2;">
+                        <div><span style="color: #999;">{{ i18n[lang].last_mile_carrier }}：</span>{{ na(selectedOrder.lastMileCarrier) }}</div>
+                        <div><span style="color: #999;">{{ i18n[lang].last_mile_no }}：</span>{{ na(selectedOrder.lastMileTrackingNo) }}</div>
+                        <div v-if="selectedOrder.lastMileInfo" style="margin-top: 6px; color: #fc5185; font-size: 13px;">
+                            {{ selectedOrder.lastMileInfo.statusInfo }}
+                        </div>
+                    </div>
+                </div>
+
                 <button class="back-btn" @click="selectedOrder = null">关闭</button>
             </div>
         </div>
@@ -384,7 +418,9 @@
                         customer: "当前客户", orders: "票货物", switch_code: "切换客户代码", empty_orders: "该客户暂无运单数据",
                         tab_all: "全部运单", tab_progress: "进行中", tab_done: "已完成",
                         bill_no: "提单号", pol: "起运港", pod: "目的港", etd: "开船", eta: "到港", volume: "货量",
-                        trace_title: "物流轨迹", 
+                        trace_title: "物流轨迹", no_data: "暂无数据", track_loading: "轨迹加载中…", track_none: "暂无轨迹数据",
+                        last_mile: "后端派送", last_mile_carrier: "派送方式", last_mile_no: "派送单号",
+                        carrier: "船公司", containers: "箱信息",
                         status_sailing: "航行中", status_port: "已进港", status_arrived: "已抵达",
                         node_in_warehouse: "已进仓", node_in_port: "已进港", node_departed: "已启运",
                         node_sailing: "航行中", node_arrived: "已抵达"
@@ -397,7 +433,9 @@
                         customer: "Client", orders: "Shipments", switch_code: "Switch Code", empty_orders: "No shipments found for this client yet.",
                         tab_all: "All", tab_progress: "In Progress", tab_done: "Completed",
                         bill_no: "B/L No.", pol: "POL", pod: "POD", etd: "ETD", eta: "ETA", volume: "Volume",
-                        trace_title: "Logistics Trace", 
+                        trace_title: "Logistics Trace", no_data: "N/A", track_loading: "Loading tracking…", track_none: "No tracking data",
+                        last_mile: "Last Mile", last_mile_carrier: "Carrier", last_mile_no: "Tracking No.",
+                        carrier: "Carrier", containers: "Containers",
                         status_sailing: "Sailing", status_port: "At Port", status_arrived: "Arrived",
                         node_in_warehouse: "In Warehouse", node_in_port: "At Port", node_departed: "Departed",
                         node_sailing: "Sailing", node_arrived: "Arrived"
@@ -431,6 +469,8 @@
                             isLoggedIn.value = true; // 登录成功，切换页面
                             if (orders.value.length === 0) {
                                 alert(i18n[lang.value].empty_orders);
+                            } else {
+                                loadTracking(); // 列表先出，再逐票拉飞驼轨迹
                             }
                         } else {
                             alert((data && data.error) ? data.error : '代码错误或查询失败 (状态码: ' + res.status + ')');
@@ -440,17 +480,85 @@
                     }
                 };
                 
+                // 空值兜底显示"暂无数据"
+                const na = (v) => (v === undefined || v === null || v === '')
+                    ? i18n[lang.value].no_data : v;
+
+                // 逐票拉取飞驼海运轨迹（并发 3，避免 Vercel 单函数 10s 超时）
+                // 一个提单号只发一次请求，多箱数据在 containers[] 里拿，不额外扣费
+                const loadTracking = async () => {
+                    const queue = orders.value.filter((o) => o.billNo || o.containerNo);
+                    queue.forEach((o) => { o.trackingState = 'loading'; });
+
+                    const worker = async () => {
+                        while (queue.length) {
+                            const o = queue.shift();
+                            try {
+                                const qs = new URLSearchParams({
+                                    billNo: o.billNo || '',
+                                    containerNo: o.containerNo || '',
+                                    carrier: o.carrierCode || '',
+                                    expressNo: o.lastMileTrackingNo || '',
+                                });
+                                const res = await fetch('/api/track?' + qs.toString());
+                                const data = await res.json().catch(() => null);
+
+                                if (data && data.ok && data.sea) {
+                                    const t = data.sea;
+                                    o.vessel = t.vessel || o.vessel;
+                                    o.voyage = t.voyage || o.voyage;
+                                    o.pol = t.pol || o.pol;
+                                    o.pod = t.pod || o.pod;
+                                    o.etd = t.etd || o.etd;
+                                    o.eta = t.eta || o.eta;
+                                    o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : o.statusKey;
+                                    o.statusText = t.statusText || '';
+                                    o.carrierName = t.carrier || '';
+                                    o.totalContainers = t.totalContainers || '';
+                                    o.containers = t.containers || [];
+                                    // 飞驼真实节点：最后一条作为当前节点
+                                    if (t.traces && t.traces.length) {
+                                        const n = t.traces.length;
+                                        o.traces = t.traces.map((x, i) => ({
+                                            key: x.code,
+                                            text: x.text,
+                                            time: x.time,
+                                            location: x.place,
+                                            done: i < n - 1,
+                                            current: i === n - 1,
+                                        }));
+                                    }
+                                    o.trackingState = 'done';
+                                    if (data.lastMile) o.lastMileInfo = data.lastMile;
+                                } else {
+                                    o.trackingState = 'none';
+                                    o.trackingError = (data && data.seaError) || i18n[lang.value].track_none;
+                                }
+                            } catch (err) {
+                                o.trackingState = 'none';
+                                o.trackingError = err.message;
+                            }
+                        }
+                    };
+
+                    await Promise.all([worker(), worker(), worker()]);
+                };
+
                 const switchCode = () => { isLoggedIn.value = false; code.value = ''; orders.value = []; };
                 const viewDetail = (order) => { selectedOrder.value = order; };
                 
                 const getStatusText = (key) => i18n[lang.value][`status_${key}`] || key;
                 const getTraceNode = (key) => i18n[lang.value][`node_${key}`] || key;
+                const vesselText = (o) => {
+                    const s = [o.vessel, o.voyage].filter(Boolean).join(' / ');
+                    return s || i18n[lang.value].no_data;
+                };
 
                 // --- 5. 返回给模板使用的数据和方法 ---
                 return {
                     lang, isLoggedIn, code, customerName, activeTab, selectedOrder,
                     i18n, orders, filteredOrders,
-                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode
+                    toggleLang, login, switchCode, viewDetail, getStatusText, getTraceNode, na, vesselText
                 };
             }
         }).mount('#app');
