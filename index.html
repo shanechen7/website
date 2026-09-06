@@ -162,6 +162,7 @@
         .status-port { background: rgba(135, 133, 162, 0.1); color: #8785a2; }
         .status-arrived { background: #333; color: #fff; }
         .status-delivering { background: rgba(74, 108, 247, 0.12); color: #4a6cf7; }
+        .status-none { background: rgba(255, 177, 66, 0.16); color: #c07a12; }
 
         .route-box { display: flex; align-items: stretch; justify-content: space-between; margin-bottom: 24px; }
         .port-info { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 100px; min-height: 52px; flex-shrink: 0; }
@@ -558,16 +559,40 @@
                     if (/UPS|FEDEX|DHL|TNT|联邦快递/.test(c)) return 'express';
                     return '';
                 };
-                // 人工完成信号：货代在表格 State 列维护"已交付/已签收"（私卡派送完成常用）
+                // 海运节点判定 & 是否已真正进入海运段：
+                // 节点码来自飞驼《集装箱综合跟踪-节点状态码》，只认飞驼返回的真实节点，
+                // 不在前端用 ETD/ETD/表格状态去臆造"已进仓/已启运"等节点
+                const SEA_LEG_CODES = new Set([
+                    'LOBD','DLPT','TSBA','TSCA','TSDC','TSLB','TSDP','FDLB','FDDP','BGLB','BGDP',
+                    'BDAR','POCA','DSCH','FDBA','FDDC','BGBA','BGDC',
+                    'PCAB','STCS','STRP','RCVE','FETA','GWIT','GTOT','IRDS'
+                ]);
+                const isSeaLegEvent = (t) => {
+                    const code = String(t.key || '').toUpperCase();
+                    if (SEA_LEG_CODES.has(code)) return true;
+                    const text = String(t.text || t.textEn || '');
+                    return /(航行中|开航|开船|离港|出海|已上船|已装船|已离泊|已靠泊|已卸船|已进港|已到港|已抵达|到港|目的港)|vessel\s+(departed|sailed|arrived)|departed|departure|arrived|arrival|at sea|sailed/i.test(text);
+                };
+                // 是否已真正开航/到港：真实节点里有海运节点，或有真实离港时间 ATD
+                const hasRealSea = (o) => {
+                    const tr = (o && Array.isArray(o.traces)) ? o.traces : [];
+                    return tr.some((t) => !t.estimated && isSeaLegEvent(t)) || !!(o && o.atdRaw);
+                };
+                // 人工完成信号：仅"到门"（尾程走私卡/快递）这类票，货代在表格 State 列手动填"已交付/已签收"；
+                // 其余（到港 CY-CY 等）状态一律以飞驼为准
                 const isManualDone = (o) => /已交付|已签收|签收|妥投|delivered|signed/i.test(String(o.statusRaw || ''));
                 const seaStatusText = (o, key) => {
                     if (lang.value === 'en') return o.statusTextEn || i18n.en[`status_${key}`] || key;
                     return o.statusText || i18n.zh[`status_${key}`] || key;
                 };
                 const getDisplay = (o) => {
-                    // 人工标记整单完成（私卡送达 / 快递签收后货代填 State）
-                    if (isManualDone(o)) {
+                    // 人工标记整单完成（仅到门票：私卡/快递派送完成后货代填 State）
+                    if (isDoorDelivery(o) && isManualDone(o)) {
                         return { key: 'arrived', text: i18n[lang.value].delivered };
+                    }
+                    // 飞驼还没返回真实海运节点（船还没开 / 还没抓取到）：不臆断成"航行中/已进港"
+                    if (!hasRealSea(o)) {
+                        return { key: 'none', text: i18n[lang.value].trace_waiting };
                     }
                     const seaKey = (o.statusKey && o.statusKey !== 'none') ? o.statusKey : 'sailing';
                     // 海运段还没走完：只显示海运状态
@@ -753,7 +778,9 @@
                                     o.etaRaw = t.ata || t.eta || '';
                                     // 货量兜底：表格里没填就用飞驼的箱量（如 "1*40HC"）
                                     if (!o.volume && t.totalContainers) o.volume = t.totalContainers;
-                                    o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : o.statusKey;
+                                    // 状态以飞驼为准：有状态就用飞驼的，没有/未识别就置空，
+                                    // 不沿用 SeaTable 表格里猜测出来的阶段（表格 State 仅"已交付"等人工收尾才参考）
+                                    o.statusKey = (t.stateKey && t.stateKey !== 'none') ? t.stateKey : '';
                                     o.statusText = t.statusText || '';
                                     o.statusTextEn = t.statusTextEn || '';
                                     o.carrierName = t.carrier || '';
@@ -832,14 +859,16 @@
                     if (lang.value === 'en') return c.statusEn || c.status || i18n[lang.value].no_data;
                     return c.status || i18n[lang.value].no_data;
                 };
-                // 详情页物流轨迹：
-                // 只要没有任何"实际发生"的轨迹节点（还没开船/还没装箱/飞驼还没抓到数据），
-                // 就不把"预计"的未来节点当成当前状态，统一显示"等待更新中"
+                // 详情页物流轨迹：只展示飞驼真实节点
+                // 时间线里没有任何"实际海运段"节点（船还没开/还没抓取到）时，
+                // 只保留已发生的真实前序节点，不把"预计"的未来节点（尤其"航行中"）当当前状态，
+                // 统一以"等待更新中"收尾
                 const modalTraces = (o) => {
                     const tr = (o && Array.isArray(o.traces)) ? o.traces : [];
-                    const hasRealEvent = tr.some((t) => !t.estimated);
-                    if (!hasRealEvent) {
-                        return [{
+                    if (!hasRealSea(o)) {
+                        // 只保留飞驼真实返回、且已发生(非预计)的节点
+                        const history = tr.filter((t) => t.done).map((t) => ({ ...t, current: false }));
+                        return history.concat([{
                             key: 'waiting',
                             text: i18n.zh.trace_waiting,
                             textEn: i18n.en.trace_waiting,
@@ -849,7 +878,7 @@
                             done: false,
                             current: true,
                             waiting: true,
-                        }];
+                        }]);
                     }
                     return tr;
                 };
