@@ -110,26 +110,6 @@ module.exports = async (req, res) => {
         }
     };
 
-    // 根据已有数据拼出 5 个物流节点的时间线
-    const buildTraces = (info) => {
-        const stepMap = { in_warehouse: 0, departed: 1, sailing: 2, in_port: 3, arrived: 4 };
-        const cur = stepMap[info.statusKey] == null ? 2 : stepMap[info.statusKey];
-        const nodes = [
-            { key: 'in_warehouse', time: '', location: '' },
-            { key: 'departed', time: info.etd || '', location: info.pol || '' },
-            { key: 'sailing', time: '', location: (info.vessel && info.voyage) ? `${info.vessel} / ${info.voyage}` : '' },
-            { key: 'in_port', time: '', location: info.pod || '' },
-            { key: 'arrived', time: info.eta || '', location: info.pod || '' },
-        ];
-        return nodes.map((n, i) => ({
-            key: n.key,
-            time: n.time || '',
-            location: n.location || '',
-            done: i <= cur,
-            current: i === cur,
-        }));
-    };
-
     try {
         // ============================================================
         // 1. 获取 Base 的访问凭证（官方 v2.1 接口，Bearer 鉴权）
@@ -284,7 +264,9 @@ module.exports = async (req, res) => {
                 pod,
                 etd,
                 eta,
-                traces: buildTraces({ vessel, voyage, pol, pod, etd, eta, statusKey }),
+                // 物流轨迹只展示飞驼 /api/track 返回的真实节点：
+                // 列表阶段先给空数组，前端拉轨迹后写入；不要在服务端臆造"已进仓/已启运"等节点
+                traces: [],
             };
         });
 
