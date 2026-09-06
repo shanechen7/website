@@ -147,6 +147,7 @@
         .card-top { display: flex; justify-content: space-between; margin-bottom: 24px; }
         .label { font-size: 12px; color: #999; margin-bottom: 4px; }
         .bill-no { font-size: 18px; font-weight: 500; color: #333; margin-bottom: 6px; }
+        .top-delivery { font-size: 18px; font-weight: 500; color: #333; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .vessel-text { font-size: 12px; color: #999; }
         .track-hint { font-size: 11px; color: #aaa; margin-top: 8px; }
         .est { font-size: 10px; color: #aaa; margin-left: 4px; font-weight: 400; }
@@ -301,8 +302,9 @@
                             <div class="bill-no">{{ na(order.billNo) }}</div>
                             <div class="vessel-text">{{ vesselText(order) }}</div>
                         </div>
-                        <div style="text-align: right;">
+                        <div style="text-align: right; min-width: 0;">
                             <div :class="['status-tag', 'status-' + displayKey(order)]">{{ displayText(order) }}</div>
+                            <div v-if="order.deliveryMode" class="top-delivery" style="margin-top: 6px;">{{ order.deliveryMode }}</div>
                             <div v-if="order.trackingState === 'loading'" class="track-hint">{{ i18n[lang].track_loading }}</div>
                             <div v-else-if="order.trackingState === 'pending'" class="track-hint">{{ order.trackingError || i18n[lang].track_pending }}</div>
                             <div v-else-if="order.trackingState === 'none'" class="track-hint">{{ order.trackingError || i18n[lang].track_none }}</div>
@@ -372,6 +374,7 @@
                                 <div class="dashed-line"></div>
                                 <div class="ship-icon-box"><span class="ship-icon">⛴</span></div>
                             </div>
+                            <div class="ship-days" v-if="transitDays(selectedOrder)">{{ transitDays(selectedOrder) }}</div>
                         </div>
                         <div class="port-info">
                             <div class="port-name">{{ na(selectedOrder.pod) }}</div>
