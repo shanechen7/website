@@ -223,6 +223,8 @@ module.exports = async (req, res) => {
                 id: row._id || index,
                 name: getCol(row, 'Name', '客户名称', '客户') || '',
                 billNo,
+                // 船司代码：没买"自动识别船司"，必须靠表格里人工维护，查轨迹时必填
+                carrierCode: getCol(row, '船司代码', '船公司代码', 'Carrier Code', 'Carrier', '船司', '船东', 'SCAC') || '',
                 containerNo: getCol(row, 'CTNR（箱号）', 'CTNR(箱号)', '箱号', 'CTNR') || '',
                 volume: getCol(row, 'C/V（货量）', 'C/V(货量)', '货量', 'Volume', 'C/V') ?? '',
                 statusKey,
